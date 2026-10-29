@@ -1,0 +1,17 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Teamwork Multi-Agent Internal Workspace Logs
+.agents/
+
+# Large OEM Installers (>100MB exceeds GitHub push limits)
+Resources/Firmware Updater/*.exe
+*.exe
+
+# OS / Editor artifacts
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

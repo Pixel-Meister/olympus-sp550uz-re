@@ -1,0 +1,61 @@
+# TruePic III Compiler Jump Tables & Switch Dispatchers
+
+<a id="jt-overview"></a>
+## Switch & Jump Table Architecture
+
+The ARMv5TE compiler targets multi-way branch statements (`switch / case`) using PC-relative indirect jump tables. In ARM assembly, this is implemented with bounds checking followed by an indirect PC load:
+
+```arm
+cmp     r2, #0x18                ; Verify mode index is within upper bounds (0x00 to 0x18)
+bhi     0x401b3864               ; Branch on higher to clean epilogue / default handler
+ldr     pc, [pc, r2, lsl #2]     ; Load destination address from table indexed by mode << 2
+```
+
+Static analysis of Section 1 code discovered 308 distinct jump tables. The two primary executive dispatchers govern the On-Screen Display (OSD) engine and the Real-Time Executive (RTOS).
+
+---
+
+<a id="jt-osd"></a>
+## OSD Master Record Mode Dispatcher (`0x401b3324`)
+
+- **Site Address**: `0x401b32f4` (`DISP_OsdDispatcher`)
+- **Table Address**: `0x401b3324`
+- **Entry Count**: 25 entries (Modes `0x00` through `0x18`)
+- **Bounds Condition**: `mode <= 0x18`
+- **Default Target**: `0x401b3864` (Clean passthrough epilogue)
+
+| Mode Index | Target Address | Mode Name | Description |
+|:---|:---|:---|:---|
+{% for m in osd_modes %}
+| 0x{{ '%02X' % m.mode }} | 0x{{ '%08X' % m.target }} | {{ m.name | escape_pipe }} | {{ m.desc | escape_pipe }} |
+{% endfor %}
+
+---
+
+<a id="jt-rtos"></a>
+## RTOS Master Event Table (`0x4019e324`)
+
+- **Site Address**: `0x4019e1e8` (`RTOS_EventLoop`)
+- **Table Address**: `0x4019e324`
+- **Entry Count**: 16 entries (Events `0x00` through `0x0F`)
+- **Bounds Condition**: `event <= 0x0F`
+- **Default Target**: `0x4019e9f8` (Unhandled event exit handler)
+
+| Event Index | Target Address | Handler Symbol | Purpose & Description |
+|:---|:---|:---|:---|
+{% for e in rtos_events %}
+| {{ e.event }} | 0x{{ '%08X' % e.target }} | {{ e.handler | escape_pipe }} | {{ e.desc | escape_pipe }} |
+{% endfor %}
+
+---
+
+<a id="discovered-jump-tables"></a>
+## Discovered Jump Tables Catalog
+
+Complete catalog of all 308 jump tables extracted from Section 1 firmware:
+
+| # | Table Address | Dispatcher Site | Entries | Bounds Condition | Default Target |
+|:---|:---|:---|:---|:---|:---|
+{% for jt in jump_tables %}
+| {{ loop.index }} | 0x{{ '%08X' % jt.table_address }} | 0x{{ '%08X' % jt.site }} | {{ jt.entry_count }} | {{ jt.bounds | escape_pipe }} | 0x{{ '%08X' % jt.default_target }} |
+{% endfor %}

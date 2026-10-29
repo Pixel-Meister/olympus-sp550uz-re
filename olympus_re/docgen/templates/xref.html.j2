@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Olympus SP-550UZ - Firmware Architecture & Cross-Reference</title>
+  <style>
+    :root {
+      --bg-primary: #0d1117;
+      --bg-surface: #161b22;
+      --bg-elevated: #21262d;
+      --bg-hover: #30363d;
+      --border-color: #30363d;
+      --text-main: #c9d1d9;
+      --text-muted: #8b949e;
+      --text-bright: #f0f6fc;
+      --accent-blue: #58a6ff;
+      --accent-green: #3fb950;
+      --accent-purple: #bc8cff;
+      --accent-orange: #f0883e;
+      --accent-yellow: #d29922;
+      --accent-red: #f85149;
+      --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      line-height: 1.6;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    header.app-header {
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-color);
+      padding: 12px 24px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header-brand h1 { font-size: 1.25rem; color: var(--text-bright); }
+    .header-meta { font-size: 0.85rem; color: var(--text-muted); }
+    .header-badges { display: flex; gap: 8px; }
+
+    .layout-container {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    aside.sidebar {
+      width: 280px;
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border-color);
+      overflow-y: auto;
+      padding: 16px;
+      flex-shrink: 0;
+    }
+    .sidebar-section { margin-bottom: 20px; }
+    .sidebar-title { font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; margin-bottom: 8px; }
+    .sidebar-nav { list-style: none; }
+    .sidebar-nav li { margin-bottom: 4px; }
+    .sidebar-nav a {
+      display: block;
+      padding: 6px 10px;
+      color: var(--text-main);
+      text-decoration: none;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      transition: background 0.15s ease;
+    }
+    .sidebar-nav a:hover {
+      background: var(--bg-hover);
+      color: var(--accent-blue);
+    }
+
+    main.main-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 32px;
+      max-width: 1400px;
+    }
+    section.doc-section {
+      margin-bottom: 48px;
+      scroll-margin-top: 80px;
+    }
+    section.doc-section h2 {
+      font-size: 1.5rem;
+      color: var(--text-bright);
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 8px;
+      margin-bottom: 16px;
+    }
+    section.doc-section h3 {
+      font-size: 1.2rem;
+      color: var(--accent-blue);
+      margin-top: 24px;
+      margin-bottom: 10px;
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      margin: 16px 0;
+      background: var(--bg-surface);
+    }
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      text-align: left;
+    }
+    table.data-table th, table.data-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-color);
+    }
+    table.data-table th {
+      background: var(--bg-elevated);
+      color: var(--text-bright);
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+    }
+    table.data-table tr:hover {
+      background: var(--bg-hover);
+    }
+    table.data-table tr:target {
+      background-color: rgba(88, 166, 255, 0.2) !important;
+      outline: 2px solid var(--accent-blue);
+    }
+    td.addr-cell, td.mono-cell {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+    }
+    td.symbol-name {
+      word-break: break-all;
+      max-width: 380px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .badge-function { background: rgba(63, 185, 80, 0.2); color: var(--accent-green); border: 1px solid rgba(63, 185, 80, 0.4); }
+    .badge-jumptable { background: rgba(188, 140, 255, 0.2); color: var(--accent-purple); border: 1px solid rgba(188, 140, 255, 0.4); }
+    .badge-mmio { background: rgba(248, 81, 73, 0.2); color: var(--accent-red); border: 1px solid rgba(248, 81, 73, 0.4); }
+    .badge-osd { background: rgba(88, 166, 255, 0.2); color: var(--accent-blue); }
+    .badge-rtos { background: rgba(188, 140, 255, 0.2); color: var(--accent-purple); }
+    .badge-power { background: rgba(210, 153, 34, 0.2); color: var(--accent-yellow); }
+    .badge-storage { background: rgba(240, 136, 62, 0.2); color: var(--accent-orange); }
+
+    pre.code-block {
+      background: #0f141c;
+      border: 1px solid var(--border-color);
+      border-left: 4px solid var(--accent-blue);
+      border-radius: 4px;
+      padding: 12px 16px;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      overflow-x: auto;
+      margin: 12px 0;
+      color: #e6edf3;
+    }
+    code { font-family: var(--font-mono); font-size: 0.9em; padding: 2px 4px; background: var(--bg-elevated); border-radius: 4px; }
+    a.code-link { color: var(--accent-blue); text-decoration: none; font-family: var(--font-mono); }
+    a.code-link:hover { text-decoration: underline; color: #79c0ff; }
+
+    .search-controls {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .search-input {
+      flex: 1;
+      min-width: 250px;
+      padding: 8px 12px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      color: var(--text-bright);
+      font-size: 0.95rem;
+    }
+    .search-select {
+      padding: 8px 12px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      color: var(--text-main);
+      font-size: 0.95rem;
+    }
+    .search-stats {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    .pagination-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 12px;
+    }
+    .btn {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .btn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-bright); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-brand">
+      <h1>Olympus SP-550UZ Platform & Subsystem Cross-Reference</h1>
+      <span class="header-meta">Platform: Sanyo SG155 | Processor: TruePic III (ARMv5TEJ LE) | Hardware: SANE321000000000</span>
+    </div>
+    <div class="header-badges">
+      <span class="badge badge-function">{{ summary.function_count }} Functions</span>
+      <span class="badge badge-jumptable">{{ summary.jump_table_count }} Jump Tables</span>
+      <span class="badge badge-mmio">7 MMIO Blocks</span>
+    </div>
+  </header>
+
+  <div class="layout-container">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-title">Navigation</div>
+        <ul class="sidebar-nav">
+          <li><a href="#overview">Platform Overview</a></li>
+          <li><a href="#memory-map">TruePic III Memory Map</a></li>
+          <li><a href="#mmio-peripherals">MMIO Peripherals</a></li>
+          <li><a href="#jump-tables">Switch / Jump Tables</a></li>
+          <li><a href="#functions">Function Call Graph</a></li>
+          <li><a href="#search-section">Symbol Search Engine</a></li>
+        </ul>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-title">Subsystems</div>
+        <ul class="sidebar-nav">
+          <li><a href="#subsystem-osd">OSD Engine</a></li>
+          <li><a href="#subsystem-rtos">RTOS Event Loop</a></li>
+          <li><a href="#subsystem-power">Power &amp; Sleep</a></li>
+          <li><a href="#subsystem-sensor-isp">Sensor &amp; ISP</a></li>
+          <li><a href="#subsystem-storage">Storage &amp; NAND</a></li>
+          <li><a href="#subsystem-ptp-usb">PTP-over-SCSI &amp; USB</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <!-- Section 1: Platform Overview -->
+      <section id="overview" class="doc-section">
+        <h2>1. Platform Architecture Overview</h2>
+        <p>The <strong>Olympus SP-550UZ</strong> is powered by the <strong>TruePic III</strong> application-specific processor (Sanyo Coach platform, board code <code>SG155</code>, firmware build <code>v155-77</code>). It integrates a 32-bit ARMv5TE core with dedicated imaging DSP hardware.</p>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead><tr><th>Property</th><th>Specification</th></tr></thead>
+            <tbody>
+              <tr><td>Target Camera</td><td>Olympus SP-550UZ (Ultra Zoom 18x)</td></tr>
+              <tr><td>ASIC / SoC</td><td>Olympus TruePic III / Sanyo SG155</td></tr>
+              <tr><td>Processor Core</td><td>ARMv5TEJ (Little-Endian, pure 32-bit ARM mode)</td></tr>
+              <tr><td>Reset Vector</td><td>0x40000000 (Branches to 0x40000800 ColdBootInit)</td></tr>
+              <tr><td>Supervisor / IRQ Stack</td><td>0x41fcf000</td></tr>
+              <tr><td>System / User Stack</td><td>0x41fd0000</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Section 2: Memory Domains -->
+      <section id="memory-map" class="doc-section">
+        <h2>2. TruePic III Memory Architecture &amp; Domains</h2>
+        <p>Authoritative physical memory domains spanning 0x40000000 through 0xE081FFFF:</p>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead><tr><th>Domain Name</th><th>Start Address</th><th>End Address</th><th>Size</th><th>Perms</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr id="domain-sec1-sdram"><td class="mono-cell">Section 1 SDRAM (NPROG)</td><td class="addr-cell">0x40000000</td><td class="addr-cell">0x403F50E7</td><td>4.15 MB</td><td>RX</td><td>Cached ARM Program Code &amp; Literal Pools</td></tr>
+              <tr id="domain-sec2-ndata"><td class="mono-cell">Section 2 SDRAM (NDATA)</td><td class="addr-cell">0x403F5108</td><td class="addr-cell">0x40855967</td><td>4.59 MB</td><td>RO</td><td>Cached Resources, Bitmaps, Fonts, Audio</td></tr>
+              <tr id="domain-uncached-ram"><td class="mono-cell">Uncached RAM Buffers</td><td class="addr-cell">0x41F00000</td><td class="addr-cell">0x41F7FFFF</td><td>512 KB</td><td>RW</td><td>Uncached Framebuffers &amp; DMA Buffers</td></tr>
+              <tr id="domain-blackboard"><td class="mono-cell">System State Blackboard</td><td class="addr-cell">0x41F80000</td><td class="addr-cell">0x41F9FFFF</td><td>128 KB</td><td>RW</td><td>Master State (0x41f8ddcc) &amp; Idle Timer (0x41f8ddac)</td></tr>
+              <tr id="domain-stacks"><td class="mono-cell">Banked Task Stacks</td><td class="addr-cell">0x41FA0000</td><td class="addr-cell">0x41FD0000</td><td>192 KB</td><td>RW</td><td>Banked Exception &amp; User Stacks</td></tr>
+              <tr id="domain-mmio-sdram"><td class="mono-cell">MMIO SDRAM Controller</td><td class="addr-cell">0x80410000</td><td class="addr-cell">0x8041FFFF</td><td>64 KB</td><td>RW</td><td>SDRAM Timing &amp; Refresh Registers</td></tr>
+              <tr id="domain-mmio-dma-nand"><td class="mono-cell">MMIO DMA &amp; NAND Controller</td><td class="addr-cell">0xC04C0000</td><td class="addr-cell">0xC04CFFFF</td><td>64 KB</td><td>RW</td><td>DMA Channel Configuration &amp; NAND Interface</td></tr>
+              <tr id="domain-mmio-periph"><td class="mono-cell">MMIO Timers/Interrupts/DAC/ISP</td><td class="addr-cell">0xE0000000</td><td class="addr-cell">0xE081FFFF</td><td>8.12 MB</td><td>RW</td><td>Timers, Interrupts, Video DAC, Keypad, ISP, Scaler</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Section 3: MMIO Peripherals -->
+      <section id="mmio-peripherals" class="doc-section">
+        <h2>3. Hardware MMIO Peripherals Catalog</h2>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead><tr><th>Peripheral Block</th><th>Base Address</th><th>Range</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr id="mmio-sdram-ctrl"><td>SDRAM Controller</td><td class="addr-cell">0x80410000</td><td>0x80410000 - 0x8041FFFF</td><td>SDRAM bus timing, refresh counters, CAS latency</td></tr>
+              <tr id="mmio-dma-nand"><td>DMA &amp; NAND Controller</td><td class="addr-cell">0xC04C0000</td><td>0xC04C0000 - 0xC04CFFFF</td><td>DMA Controller channels and NAND Flash Controller</td></tr>
+              <tr id="mmio-timers-int"><td>Timers &amp; Interrupts</td><td class="addr-cell">0xE0000000</td><td>0xE0000000 - 0xE001FFFF</td><td>Timer registers, Interrupt Controller, tick sources (base 0xE0010000)</td></tr>
+              <tr id="mmio-gpio-keypad"><td>GPIO Keypad</td><td class="addr-cell">0xE0200000</td><td>0xE0200000 - 0xE020FFFF</td><td>GPIO button matrix polling (Power, Shutter, Dial, DISP)</td></tr>
+              <tr id="mmio-isp"><td>Image Signal Processor (ISP)</td><td class="addr-cell">0xE0400000</td><td>0xE0400000 - 0xE04FFFFF</td><td>CCD Sensor timing generator, AFE, defect correction</td></tr>
+              <tr id="mmio-video-dac"><td>Video DAC Compositor</td><td class="addr-cell">0xE0600000</td><td>0xE0600000 - 0xE06FFFFF</td><td>Video DAC rasterizer, NTSC/PAL composite out, OSD blend</td></tr>
+              <tr id="mmio-jpeg-scaler"><td>Hardware JPEG Scaler</td><td class="addr-cell">0xE0800000</td><td>0xE0800000 - 0xE081FFFF</td><td>JPEG codec, DCT hardware accelerator, hardware Scaler</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Section 4: Subsystems Deep Dives -->
+      <section id="subsystems" class="doc-section">
+        <h2>4. Platform Subsystem References</h2>
+
+        <!-- OSD Engine -->
+        <div id="subsystem-osd" class="subsystem-card">
+          <h3>On-Screen Display (OSD) Engine (DISP_)</h3>
+          <p>The OSD engine composites live preview graphics, AF brackets, battery meters, and menus onto the hardware overlay. Master entry point is <a class="code-link" href="#sym-0x401b32f4">0x401B32F4</a> (<code>DISP_OsdDispatcher</code>), which switches across 25 modes via jump table <a class="code-link" href="#jt-0x401b3324">0x401B3324</a>.</p>
+          <pre class="code-block">0x401b32f4: cmp   r2, #0x18         ; OSD mode bound check (0x00 to 0x18)
+0x401b32f8: ldrls pc, [pc, r2, lsl #2] ; Indirect dispatch via 0x401b3324
+0x401b32fc: b     0x401b3864        ; Default target: Clean Epilogue</pre>
+          <p>Modes <code>0x00</code> (Normal HUD), <code>0x01</code> (Grid/Histogram), <code>0x02</code>/<code>0x03</code>/<code>0x08</code> (Minimal HUD / Clean view). Central AF box renderer is at <code>0x401ad504</code>; preview compositor loop operates at <code>0x40251934</code> with hooks at <code>0x401b28b0</code>.</p>
+        </div>
+
+        <!-- RTOS Subsystem -->
+        <div id="subsystem-rtos" class="subsystem-card">
+          <h3>Real-Time Executive (RTOS) &amp; Event Dispatcher</h3>
+          <p>The event-driven operating system dispatches system events via the event dispatcher at <a class="code-link" href="#sym-0x4019e1e8">0x4019E1E8</a>, reading from event jump table <a class="code-link" href="#jt-0x4019e324">0x4019E324</a> (16 entries, events <code>0x00</code> through <code>0x0F</code>).</p>
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead><tr><th>Event</th><th>Target Handler</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td>0x00</td><td class="addr-cell">0x4019E5F0</td><td>Standard Task Wakeup Event</td></tr>
+                <tr><td>0x01</td><td class="addr-cell">0x4019E8F8</td><td>Mode Transition Dispatch</td></tr>
+                <tr><td>0x02</td><td class="addr-cell">0x4019E6B8</td><td>Lens Motor Position &amp; Optical Zoom Tracking</td></tr>
+                <tr><td>0x07</td><td class="addr-cell">0x4019E9CC</td><td>Secondary Idle Sleep Event Handler (calls 0x4014bb18)</td></tr>
+                <tr><td>0x0E</td><td class="addr-cell">0x4019E9F8</td><td>LCD Backlight Dimming Event Handler (150s timeout)</td></tr>
+                <tr><td>0x0F</td><td class="addr-cell">0x4019E9C0</td><td>Primary Idle Sleep Event Handler (calls 0x4014b264)</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Power Management -->
+        <div id="subsystem-power" class="subsystem-card">
+          <h3>Power Management, Display Destination &amp; Sleep Inhibit</h3>
+          <p>Global system state resides at SDRAM blackboard <code>0x41f80000</code>. Master state struct at <code>0x41f8ddcc</code> stores display output destination at offset <code>+0x5a</code>: <code>0</code> (LCD), <code>1</code> (EVF), <code>4</code> (NTSC Video Out), <code>6</code> (PAL Video Out). Inactivity countdown timer at <code>0x41f8ddac</code> ticks down to trigger sleep transitions <a class="code-link" href="#sym-0x4014b264">0x4014B264</a> and <a class="code-link" href="#sym-0x4014bb18">0x4014BB18</a>. Sleep is inhibited by query function <a class="code-link" href="#sym-0x4012fef4">0x4012FEF4</a> and polled by <code>0x40184be0</code>, which zeroes sleep threshold packet <code>sp[6]=0</code> at <code>0x40184d84</code>.</p>
+        </div>
+
+        <!-- Sensor / ISP Pipeline -->
+        <div id="subsystem-sensor-isp" class="subsystem-card">
+          <h3>Sensor &amp; ISP Pipeline (REC_ / SYSFNC_)</h3>
+          <p>Continuous sensor streaming is orchestrated by <a class="code-link" href="#sym-0x40176b38">0x40176B38</a> (<code>REC_ThroughCtrl</code>) routing draft sensor frames to DRAM buffers. Video buffer pixel clocks for NTSC/PAL DAC output are programmed by <a class="code-link" href="#sym-0x400d4ac0">0x400D4AC0</a> (<code>SYSFNC_FMT_set_BufA_clock</code>). Factory CCD calibration tables for dead pixel defect correction reside at <code>0x402b8000</code>.</p>
+        </div>
+
+        <!-- Storage & NAND Flash -->
+        <div id="subsystem-storage" class="subsystem-card">
+          <h3>Storage Subsystem &amp; NAND Flash Translation (BML_ / STL_)</h3>
+          <p>The storage layer pairs the Tokyo Electron Device FSB FAT filesystem with Samsung-style Block Management (<code>BML_</code>) and Sector Translation (<code>STL_</code>) layers for xD-Picture cards and internal NAND. Firmware card update path requires file <code>/FIRMWARE/FIRMWARE.BIN</code> (FAT 8.3 <code>FIRMWAREBIN</code>), validated by <a class="code-link" href="#sym-0x402918d4">0x402918D4</a> and executed by <a class="code-link" href="#sym-0x40291694">0x40291694</a>.</p>
+        </div>
+
+        <!-- PTP-over-SCSI Subsystem -->
+        <div id="subsystem-ptp-usb" class="subsystem-card">
+          <h3>PTP-over-SCSI &amp; USB Flashing Protocol</h3>
+          <p>USB communication operates over USB Mass Storage bulk endpoints via tunneled SCSI Command Descriptor Blocks (CDBs): <code>0xC0</code> (PTP Command), <code>0xC1</code> (PTP Data Send), <code>0xC4</code> (PTP Data Query), and <code>0xDF</code> (Vendor Mode Switch). Supported PTP opcodes include <code>0x1001</code> (GetDeviceInfo), <code>0x100C</code> (SendObjectInfo, Storage ID <code>0x80000001</code>), <code>0x9119</code> (SendFirmwareChunk), <code>0x9121</code> (FirmwareCheck), and <code>0x9123</code> (UpdateInitiate). Handled by dispatcher <a class="code-link" href="#sym-0x40316ed8">0x40316ED8</a>.</p>
+        </div>
+      </section>
+
+      <!-- Section 5: Jump Tables Catalog -->
+      <section id="jump-tables" class="doc-section">
+        <h2>5. Resolved Switch / Jump Tables Catalog</h2>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead><tr><th>Table Address</th><th>Site Address</th><th>Entries</th><th>Bounds Check</th><th>Default Target</th></tr></thead>
+            <tbody>
+              {% for jt in jump_tables %}
+              <tr id="jt-0x{{ '%08x' % jt.table_address }}">
+                <td class="addr-cell">0x{{ '%08X' % jt.table_address }}</td>
+                <td class="addr-cell">
+                  {% if jt.site in valid_sym_addrs %}
+                  <a class="code-link" href="#sym-0x{{ '%08x' % jt.site }}">0x{{ '%08X' % jt.site }}</a>
+                  {% else %}
+                  <span>0x{{ '%08X' % jt.site }}</span>
+                  {% endif %}
+                </td>
+                <td>{{ jt.entry_count }}</td>
+                <td class="mono-cell">{{ jt.bounds }}</td>
+                <td class="addr-cell">0x{{ '%08X' % jt.default_target }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Section 6: Functions & Call Graph -->
+      <section id="functions" class="doc-section">
+        <h2>6. Discovered Subroutines &amp; Call Graph Cross-References</h2>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead><tr><th>Address</th><th>Symbol Name</th><th>Subsystem</th><th>Size</th><th>Callers</th><th>Callees</th></tr></thead>
+            <tbody>
+              {% for fn in major_functions %}
+              <tr id="sym-0x{{ '%08x' % fn.address }}">
+                <td class="addr-cell">0x{{ '%08X' % fn.address }}</td>
+                <td class="symbol-name">{{ fn.name | e }}</td>
+                <td><span class="badge badge-{{ fn.subsystem | lower }}">{{ fn.subsystem }}</span></td>
+                <td>{{ fn.size }} B</td>
+                <td>
+                  {% for c in fn.callers[:5] %}
+                    {% if c in valid_sym_addrs %}
+                    <a class="code-link" href="#sym-0x{{ '%08x' % c }}">0x{{ '%08X' % c }}</a>{% if not loop.last %}, {% endif %}
+                    {% else %}
+                    <span>0x{{ '%08X' % c }}</span>{% if not loop.last %}, {% endif %}
+                    {% endif %}
+                  {% endfor %}
+                  {% if fn.callers | length > 5 %}<span class="text-muted">(+{{ fn.callers | length - 5 }} more)</span>{% endif %}
+                </td>
+                <td>
+                  {% for c in fn.callees[:5] %}
+                    {% if c in valid_sym_addrs %}
+                    <a class="code-link" href="#sym-0x{{ '%08x' % c }}">0x{{ '%08X' % c }}</a>{% if not loop.last %}, {% endif %}
+                    {% else %}
+                    <span>0x{{ '%08X' % c }}</span>{% if not loop.last %}, {% endif %}
+                    {% endif %}
+                  {% endfor %}
+                  {% if fn.callees | length > 5 %}<span class="text-muted">(+{{ fn.callees | length - 5 }} more)</span>{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Section 7: Interactive Search Engine -->
+      <section id="search-section" class="doc-section">
+        <h2>7. Interactive Symbol Search Engine</h2>
+        <div class="search-controls">
+          <input type="text" id="search-box" class="search-input" placeholder="Search by hex address (e.g. 401b32f4) or symbol name keyword...">
+          <select id="filter-subsystem" class="search-select">
+            <option value="ALL">All Subsystems</option>
+            <option value="OSD">OSD / Display</option>
+            <option value="RTOS">RTOS Executive</option>
+            <option value="Power">Power &amp; Sleep</option>
+            <option value="Sensor/Capture">Sensor / ISP</option>
+            <option value="Storage/NAND">Storage / NAND</option>
+            <option value="PTP/USB">PTP / USB</option>
+            <option value="General">General Subroutines</option>
+          </select>
+          <select id="filter-type" class="search-select">
+            <option value="ALL">All Symbol Types</option>
+            <option value="function">Functions</option>
+            <option value="jump_table">Jump Tables</option>
+            <option value="mmio_register">MMIO Registers</option>
+            <option value="blackboard_var">Blackboard Variables</option>
+          </select>
+        </div>
+
+        <div id="search-stats-label" class="search-stats">Initializing index...</div>
+
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead><tr><th>Address</th><th>Symbol Name</th><th>Type</th><th>Subsystem</th><th>Domain</th></tr></thead>
+            <tbody id="symbol-tbody">
+              {% for s in search_symbols %}
+              <tr data-addr="{{ '%08x' % s.address }}" data-name="{{ s.name | e }}" data-subsystem="{{ s.subsystem | e }}" data-type="{{ s.type | e }}">
+                <td class="addr-cell">0x{{ '%08X' % s.address }}</td>
+                <td class="symbol-name">{{ s.name | e }}</td>
+                <td><span class="badge badge-{{ s.type }}">{{ s.type }}</span></td>
+                <td><span class="badge">{{ s.subsystem }}</span></td>
+                <td class="mono-cell">{{ s.domain }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pagination-controls">
+          <button id="btn-prev" class="btn" disabled>&larr; Previous</button>
+          <span id="page-indicator" class="header-meta">Page 1 / 1</span>
+          <button id="btn-next" class="btn">Next &rarr;</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    (function() {
+      const PAGE_SIZE = 50;
+      let currentPage = 1;
+      let filteredRows = [];
+      let symbolData = [];
+
+      const searchInput = document.getElementById('search-box');
+      const subsystemFilter = document.getElementById('filter-subsystem');
+      const typeFilter = document.getElementById('filter-type');
+      const tableBody = document.getElementById('symbol-tbody');
+      const statsLabel = document.getElementById('search-stats-label');
+      const prevBtn = document.getElementById('btn-prev');
+      const nextBtn = document.getElementById('btn-next');
+      const pageLabel = document.getElementById('page-indicator');
+
+      function initIndex() {
+        if (!tableBody) return;
+        const rows = Array.from(tableBody.querySelectorAll('tr'));
+        symbolData = rows.map(tr => ({
+          el: tr,
+          addrHex: (tr.dataset.addr || '').toLowerCase(),
+          name: (tr.dataset.name || '').toLowerCase(),
+          subsystem: tr.dataset.subsystem || 'General',
+          type: tr.dataset.type || 'function'
+        }));
+        filteredRows = symbolData;
+        renderPage(1);
+      }
+
+      function applyFilter() {
+        const query = (searchInput ? searchInput.value.trim().toLowerCase() : '');
+        const cleanQuery = query.startsWith('0x') ? query.slice(2) : query;
+        const selectedSub = subsystemFilter ? subsystemFilter.value : 'ALL';
+        const selectedType = typeFilter ? typeFilter.value : 'ALL';
+
+        filteredRows = symbolData.filter(item => {
+          if (selectedSub !== 'ALL' && item.subsystem !== selectedSub) return false;
+          if (selectedType !== 'ALL' && item.type !== selectedType) return false;
+          if (!cleanQuery) return true;
+          return item.addrHex.includes(cleanQuery) || item.name.includes(query);
+        });
+
+        currentPage = 1;
+        renderPage(1);
+      }
+
+      function renderPage(page) {
+        currentPage = page;
+        const total = filteredRows.length;
+        const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+        if (currentPage > totalPages) currentPage = totalPages;
+
+        const startIdx = (currentPage - 1) * PAGE_SIZE;
+        const endIdx = Math.min(startIdx + PAGE_SIZE, total);
+
+        for (let i = 0; i < symbolData.length; i++) {
+          symbolData[i].el.style.display = 'none';
+        }
+
+        for (let i = startIdx; i < endIdx; i++) {
+          filteredRows[i].el.style.display = '';
+        }
+
+        if (statsLabel) {
+          statsLabel.textContent = `Showing ${total === 0 ? 0 : startIdx + 1}-${endIdx} of ${total} matching symbols`;
+        }
+        if (pageLabel) {
+          pageLabel.textContent = `Page ${currentPage} / ${totalPages}`;
+        }
+        if (prevBtn) prevBtn.disabled = (currentPage <= 1);
+        if (nextBtn) nextBtn.disabled = (currentPage >= totalPages);
+      }
+
+      let debounceTimer = null;
+      function onSearchInput() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(applyFilter, 120);
+      }
+
+      function handleAnchorHash() {
+        try {
+          const hash = window.location.hash;
+          if (hash && /^#sym-0x[0-9a-fA-F]+$/i.test(hash)) {
+            const targetEl = document.querySelector(hash);
+            if (targetEl) {
+              targetEl.style.display = '';
+              targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }
+        } catch (e) {
+          // Gracefully ignore DOM query selector exceptions
+        }
+      }
+
+      if (searchInput) searchInput.addEventListener('input', onSearchInput);
+      if (subsystemFilter) subsystemFilter.addEventListener('change', applyFilter);
+      if (typeFilter) typeFilter.addEventListener('change', applyFilter);
+      if (prevBtn) prevBtn.addEventListener('click', () => { if (currentPage > 1) renderPage(currentPage - 1); });
+      if (nextBtn) nextBtn.addEventListener('click', () => { renderPage(currentPage + 1); });
+      window.addEventListener('hashchange', handleAnchorHash);
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initIndex);
+      } else {
+        initIndex();
+        handleAnchorHash();
+      }
+    })();
+  </script>
+</body>
+</html>

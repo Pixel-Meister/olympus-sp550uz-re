@@ -1,0 +1,162 @@
+# Olympus SP-550UZ Subsystems & Hardware Integration
+
+<a id="osd-engine"></a>
+## On-Screen Display (OSD) Engine (DISP_)
+
+The OSD and user interface subsystem is identified by the `DISP_` (and auxiliary `OSC_` / `MNCB_`) prefix. It manages 2D graphical overlay rendering, camera status iconography, rule-of-thirds grids, autofocus target boxes, and interactive menus composited directly over the live preview video stream.
+
+- **Master Record Mode Dispatcher**: `0x401b32f4` (`DISP_OsdDispatcher`)
+- **OSD Switch Jump Table**: `0x401b3324` (25 entries covering modes `0x00` through `0x18`)
+- **Bounds Check**: `cmp r2, #0x18` followed by `bhi 0x401b3864` (branch on higher to clean epilogue)
+- **Clean Passthrough Epilogue**: `0x401b3864`
+
+### OSD Display Modes (`0x00` to `0x18`)
+
+| Mode Index | Handler Target Address | Mode Name & Function | Description |
+|:---|:---|:---|:---|
+| `0x00` | `0x401b3388` | Mode 0: Full Information HUD | Standard shooting HUD displaying shutter speed, aperture, ISO, zoom gauge, battery indicator, and AF frames. |
+| `0x01` | `0x401b33d4` | Mode 1: Assist Grid & Real-Time Histogram | Overlays 3x3 framing grid and live luminance histogram over sensor preview. |
+| `0x02` | `0x401b35b4` | Mode 2: Minimal HUD View | Suppresses secondary exposure text readouts; shared target with Mode 3. |
+| `0x03` | `0x401b35b4` | Mode 3: Minimal HUD Alternate | Identical target to Mode 2 (`0x401b35b4`). Provides alternate preview path. |
+| `0x04` | `0x401b3864` | Mode 4: Clean Passthrough Epilogue | Immediate return to epilogue `0x401b3864`, bypassing OSD graphics drawing. |
+| `0x05` | `0x401b365c` | Mode 5: Custom Shooting Mode HUD | User-configured display settings and scene parameters. |
+| `0x06` | `0x401b3438` | Mode 6: Playback HUD | Image review mode showing EXIF information, histogram, and date/time. |
+| `0x07` | `0x401b35e8` | Mode 7: Scene Guide Selection HUD | Interactive scene selection display (Portrait, Landscape, Night, Sports). |
+| `0x08` | `0x401b361c` | Mode 8: Auto Minimal HUD | Auto-shooting minimal HUD view. |
+| `0x09` | `0x401b3864` | Mode 9: Clean Epilogue Return | Reserved clean passthrough path. |
+| `0x0A` | `0x401b36c0` | Mode 10: Interactive Guide Wizard HUD | In-camera interactive shooting assistance and tutorial guide. |
+| `0x0B` | `0x401b3864` | Mode 11: Clean Epilogue Return | Reserved clean passthrough path. |
+| `0x0C` | `0x401b3864` | Mode 12: Clean Epilogue Return | Reserved clean passthrough path. |
+| `0x0D` | `0x401b3864` | Mode 13: Clean Epilogue Return | Reserved clean passthrough path. |
+| `0x0E` | `0x401b3864` | Mode 14: Clean Epilogue Return | Reserved clean passthrough path. |
+| `0x0F` | `0x401b3864` | Mode 15: Clean Epilogue Return | Reserved clean passthrough path. |
+| `0x10` | `0x401b3864` | Mode 16: Clean Epilogue Return | Reserved clean passthrough path. |
+| `0x11` | `0x401b3864` | Mode 17: Clean Epilogue Return | Reserved clean passthrough path. |
+| `0x12` | `0x401b3864` | Mode 18: Clean Epilogue Return | Reserved clean passthrough path. |
+| `0x13` | `0x401b3864` | Mode 19: Clean Epilogue Return | Reserved clean passthrough path. |
+| `0x14` | `0x401b3448` | Mode 20: Movie Mode HUD (Time Elapsed) | Video recording HUD displaying elapsed time and audio indicator. |
+| `0x15` | `0x401b3458` | Mode 21: Movie Mode HUD (Remaining Storage) | Video recording HUD displaying remaining seconds and memory meter. |
+| `0x16` | `0x401b3468` | Mode 22: Voice Recording HUD | Audio memo recording progress and decibel meter. |
+| `0x17` | `0x401b35a4` | Mode 23: Panorama Assist Mode HUD | Framing alignment guides for in-camera panorama stitching. |
+| `0x18` | `0x401b3478` | Mode 24: Custom Submode Special HUD | Diagnostic testing overlay and extended configuration display. |
+
+Autofocus (AF) target boxes are rendered separately from the text HUD by functions `0x401b28b0` and `0x401ad504`. The live preview compositor loop operates continuously at `0x40251934`.
+
+---
+
+<a id="video-destination-logic"></a>
+## Video Destination Logic & Standby Sleep Inhibition
+
+The camera monitors active video output hardware and dynamically manages power saving and sleep states:
+
+### Video Destination Query (`0x4012fef4`)
+The subroutine at `0x4012fef4` inspects the active display output destination by reading the 16-bit halfword at `[0x41f8df04, #0x5a]` (`0x41f8df5e`):
+- `0`: Built-in 2.5-inch TFT LCD
+- `1`: Electronic Viewfinder (EVF micro-display)
+- `4`: Composite Video Out - NTSC (29.97 fps, 525 scanlines)
+- `6`: Composite Video Out - PAL (25.00 fps, 625 scanlines)
+- `7`, `0x17`, `0x27`: PC Cradle / USB Communication modes
+
+### Standby Sleep Lock & Hardware Inhibit
+Under standard battery operation on LCD/EVF, an inactivity countdown timer at `0x41f8ddac` decrements toward three sequential timeouts:
+1. Screen dimming threshold at 150 seconds (event `0xca0e`)
+2. Standby sleep threshold at 180 seconds (event `0xca0f`)
+3. Complete power shutdown threshold at 240 seconds
+
+During timer arming at `0x40184d84`, the routine calls Sleep Inhibit Query `0x40184be0`. When a composite video cable is attached (destination code `> 1` queried via `0x4012fef4`), line `0x40184e48` executes `mov r1, #0`, setting the countdown sleep threshold packet to zero (`sp[6]=0`). Setting `sp[6]=0` disables the standby timer in hardware silicon, preventing sleep transitions `0x4014b264` and `0x4014bb18` from ever executing.
+
+---
+
+<a id="rtos-event-dispatcher"></a>
+## RTOS Executive & Event Dispatcher (`0x4019e1e8`)
+
+The Real-Time Operating System uses an event-driven cooperative multitasking model. The central executive event dispatcher loop at `0x4019e1e8` processes incoming mailbox events through the master event jump table at `0x4019e324`:
+
+- **Event Loop Dispatcher**: `0x4019e1e8`
+- **Jump Table Address**: `0x4019e324` (16 entries, events `0x00` through `0x0F`)
+- **Bounds Check**: `cmp r1, #0xf` followed by `bhi 0x4019e9f8` (returns -1 on out-of-bounds events)
+- **Default Exit Handler**: `0x4019e9f8`
+
+| Event ID | Handler Target | Subsystem Handler Name | Purpose & Event Trigger |
+|:---|:---|:---|:---|
+| `0x00` | `0x4019e5f0` | `RTOS_Evt0_Wakeup` | System startup initialization and task wakeup event |
+| `0x01` | `0x4019e8f8` | `RTOS_Evt1_ModeTransition` | Mode dial rotation and state transition handler |
+| `0x02` | `0x4019e6b8` | `RTOS_Evt2_LensMotor` | Optical zoom lens motor positioning and boundary tracking |
+| `0x03` | `0x4019e9f8` | `RTOS_Evt3_Default` | Unhandled event default exit handler |
+| `0x04` | `0x4019e4a8` | `RTOS_Evt4_KeypadMatrix` | Keypad matrix button press and release scanner |
+| `0x05` | `0x4019e9f8` | `RTOS_Evt5_Default` | Unhandled event default exit handler |
+| `0x06` | `0x4019e484` | `RTOS_Evt6_Exposure3A` | Exposure calculation, 3A AGC, and sensor AGC update |
+| `0x07` | `0x4019e9cc` | `RTOS_Evt7_IdleSleepSecondary` | Secondary Idle Sleep Handler (calls `0x4014bb18`, event `0xca07`) |
+| `0x08` | `0x4019e49c` | `RTOS_Evt8_StrobeCapacitor` | Flash strobe capacitor charge level monitoring |
+| `0x09` | `0x4019e4f4` | `RTOS_Evt9_StorageMedia` | xD-Picture Card insertion / removal event |
+| `0x0A` | `0x4019e5a4` | `RTOS_EvtA_BatteryVoltage` | Battery ADC voltage monitor and threshold alert |
+| `0x0B` | `0x4019e4c0` | `RTOS_EvtB_Autofocus` | Autofocus motor lock and focus completion notification |
+| `0x0C` | `0x4019e4dc` | `RTOS_EvtC_ShutterRelease` | Mechanical shutter release and aperture actuation |
+| `0x0D` | `0x4019e4e8` | `RTOS_EvtD_VideoSync` | Video recording frame sync and drop monitor |
+| `0x0E` | `0x4019e9f8` | `RTOS_EvtE_LcdDimming` | LCD Backlight Dimming event (150s idle timeout, event `0xca0e`) |
+| `0x0F` | `0x4019e9c0` | `RTOS_EvtF_IdleSleepPrimary` | Primary Idle Sleep Handler (180s idle timeout, event `0xca0f`, calls `0x4014b264`) |
+
+---
+
+<a id="sysfnc-api"></a>
+## System Function Hardware API (SYSFNC_)
+
+The `SYSFNC_` subsystem provides the low-level hardware abstraction layer for clock synthesis, hardware rasterization, and digital video scaling:
+
+- **Pixel Clock Configuration**: `SYSFNC_FMT_set_BufA_clock` at `0x400d4ac0` sets the pixel clock dividers for video buffer A, locking output timing to NTSC (29.97 fps) or PAL (25.00 fps) composite DAC rasterization.
+- **Digital Zoom Scaler**: `0x403c5b10` (`SYSFNC_DSP_PIC_Zoom_`) configures the hardware DSP scaler registers during continuous zoom operations.
+- **YUV Decompressor Driver**: `0x403c5b28` (`SYSFNC_Decomp_yuv_drv`) controls hardware deinterlacing and color space conversion.
+
+---
+
+<a id="rec-preview-loop"></a>
+## Recording & Preview Loop (REC_)
+
+The `REC_` subsystem coordinates CCD sensor draft frame acquisition, timing generator synchronizers, and live preview rendering:
+
+- **Draft Preview Controller**: `REC_ThroughCtrl` at `0x40176b38` configures the continuous subsampled CCD draft stream routed directly to DRAM uncached buffers (`0x41F00000`) at 30 fps.
+- **Compositor Synchronization**: The preview compositor loop runs at `0x40251934`, invoking `DISP_OsdDispatcher` at `0x401b32f4` once every frame period (~33.3 ms).
+- **Sensor Calibration**: Factory CCD defect tables (`anji_hakuten_pos`, `meiji_kokuten_pos`) reside at `0x402b8000` to calibrate out defective sensor pixels in hardware.
+
+---
+
+<a id="nand-flash-layer"></a>
+## NAND Flash Translation Layer (BML / STL)
+
+The storage subsystem interfaces internal non-volatile 47MB flash and removable xD-Picture Cards using a layered architecture:
+
+- **Block Management Layer (`BML_`)**: Manages physical NAND block wear-leveling, bad block identification, and hardware block erasing (`BML_Init` `0x40339f1e`, `BML_Open` `0x40339f66`, `BML_Write` `0x4033b29a`, `BML_EraseBlk` `0x4033b2d2`).
+- **Sector Translation Layer (`STL_`)**: Translates 512-byte logical sectors to physical flash pages with wear-leveling remapping (`STL_Init` `0x40339f3e`, `STL_Read` `0x4033a3da`, `STL_Write` `0x4033a60e`, `STL_Delete` `0x4033a7ee`).
+- **FAT Filesystem Base (FSB)**: Tokyo Electron Device Ltd. FAT12/16 filesystem library running on top of `STL_`.
+- **System Calibration Records**: Reads persistent user settings via `Read_NAND_Mymodedata` and `Read_NAND_SystableModedata`.
+
+---
+
+<a id="ptp-over-scsi"></a>
+## PTP-over-SCSI Subsystem & Firmware Updates
+
+The camera supports firmware flashing and diagnostic communication through SCSI Command Descriptor Block (CDB) tunneling over USB Mass Storage class (`07b4:0109`):
+
+### Tunneled SCSI Command Descriptor Blocks (CDBs)
+- `0xC0`: Send PTP Command Container (64-byte command header, transfer direction `SG_DXFER_TO_DEV`).
+- `0xC1`: Send PTP Data Container (12-byte PTP header + payload data).
+- `0xC2`: Receive PTP Data-In Container (reads response payload from camera).
+- `0xC3`: Receive PTP Response Status Code (queries 16-bit PTP response code, e.g. `0x2001` Success).
+- `0xC4`: Query PTP Data-In Transfer Size (returns total bytes available in `qdata[12:16]`).
+- `0xDF`: Vendor Mode Switch (`ChangePid` switches USB device ID from Mass Storage to Diagnostic mode).
+
+### PTP Opcodes
+- `0x1001`: `GetDeviceInfo` — Returns camera manufacturer, model `SP550UZ`, and supported opcode mask.
+- `0x100C`: `SendObjectInfo` — Prepares firmware transfer (Storage ID `0x80000001`, target ID `1`, file length).
+- `0x9119`: `SendFirmwareChunk` — Transmits firmware image in `0xF800` (63,488-byte) blocks.
+- `0x9121`: `FirmwareCheck` — Commands camera bootloader to verify Section 1 and Section 2 byte sums in RAM.
+- `0x9123`: `UpdateInitiate` — Commands camera to execute physical non-volatile ROM programming.
+
+### PTP Opcode Dispatcher (`0x40316ed8`)
+Implemented in `sub_40316C88` (`0x40316c88`). Reads 16-bit opcode at offset `+0x6` (`ldrh ip, [r4, #6]`). Opcode `0x9123` branches to `0x40316ed8: bl 0x40332c28`, invoking the flash programmer at `0x40291694`.
+
+### Storage Card Firmware Update Path
+- **Trigger**: Entering Playback mode (`>`) with memory card inserted (`0x40160170`).
+- **Path Search**: Header validation routine at `0x402918d4` searches root directory for subfolder `/FIRMWARE` (FAT `"FIRMWARE   "`) and binary `/FIRMWARE/FIRMWARE.BIN` (FAT `"FIRMWAREBIN"`).
+- **Header Scramble Check**: Verifies first 4 bytes for obfuscation signature `0xBA 0xB8 0xB3 0xB1` and descrambles image via `PERM16` XOR `0xFF`.
+- **ROM Flasher**: Subroutine `0x40291694` prompts user on LCD (`YES / NO`) and flashes SDRAM image to NAND ROM.

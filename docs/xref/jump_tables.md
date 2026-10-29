@@ -1,0 +1,401 @@
+# TruePic III Compiler Jump Tables & Switch Dispatchers
+
+<a id="jt-overview"></a>
+## Switch & Jump Table Architecture
+
+The ARMv5TE compiler targets multi-way branch statements (`switch / case`) using PC-relative indirect jump tables. In ARM assembly, this is implemented with bounds checking followed by an indirect PC load:
+
+```arm
+cmp     r2, #0x18                ; Verify mode index is within upper bounds (0x00 to 0x18)
+bhi     0x401b3864               ; Branch on higher to clean epilogue / default handler
+ldr     pc, [pc, r2, lsl #2]     ; Load destination address from table indexed by mode << 2
+```
+
+Static analysis of Section 1 code discovered 308 distinct jump tables. The two primary executive dispatchers govern the On-Screen Display (OSD) engine and the Real-Time Executive (RTOS).
+
+---
+
+<a id="jt-osd"></a>
+## OSD Master Record Mode Dispatcher (`0x401b3324`)
+
+- **Site Address**: `0x401b32f4` (`DISP_OsdDispatcher`)
+- **Table Address**: `0x401b3324`
+- **Entry Count**: 25 entries (Modes `0x00` through `0x18`)
+- **Bounds Condition**: `mode <= 0x18`
+- **Default Target**: `0x401b3864` (Clean passthrough epilogue)
+
+| Mode Index | Target Address | Mode Name | Description |
+|:---|:---|:---|:---|
+| 0x00 | 0x401B3388 | Mode 0: Normal HUD | Full aperture, shutter, zoom, and battery status overlays |
+| 0x01 | 0x401B33D4 | Mode 1: Assist Grid / Histogram | Composition grid lines and real-time luminance histogram |
+| 0x02 | 0x401B35B4 | Mode 2: Minimal HUD | Minimal HUD preview displaying essential exposure readouts |
+| 0x03 | 0x401B35B4 | Mode 3: Minimal HUD Alternate | Secondary preview path sharing epilogue with Mode 2 |
+| 0x04 | 0x401B3864 | Mode 4: Clean Epilogue | Immediate epilogue return bypassing element rendering entirely |
+| 0x05 | 0x401B365C | Mode 5: Custom Shooting Mode HUD | User custom settings and scene parameters |
+| 0x06 | 0x401B3438 | Mode 6: Playback HUD | Image review thumbnail and EXIF metadata display |
+| 0x07 | 0x401B35E8 | Mode 7: Scene Guide Selection HUD | Scene mode description and icon rendering |
+| 0x08 | 0x401B361C | Mode 8: Auto Minimal HUD | Auto mode minimal display path |
+| 0x09 | 0x401B3864 | Mode 9: Clean Epilogue Return | Reserved clean passthrough path |
+| 0x0A | 0x401B36C0 | Mode 10: Interactive Guide Wizard HUD | In-camera interactive shooting assistance and tutorial guide |
+| 0x0B | 0x401B3864 | Mode 11: Clean Epilogue Return | Reserved clean passthrough path |
+| 0x0C | 0x401B3864 | Mode 12: Clean Epilogue Return | Reserved clean passthrough path |
+| 0x0D | 0x401B3864 | Mode 13: Clean Epilogue Return | Reserved clean passthrough path |
+| 0x0E | 0x401B3864 | Mode 14: Clean Epilogue Return | Reserved clean passthrough path |
+| 0x0F | 0x401B3864 | Mode 15: Clean Epilogue Return | Reserved clean passthrough path |
+| 0x10 | 0x401B3864 | Mode 16: Clean Epilogue Return | Reserved clean passthrough path |
+| 0x11 | 0x401B3864 | Mode 17: Clean Epilogue Return | Reserved clean passthrough path |
+| 0x12 | 0x401B3864 | Mode 18: Clean Epilogue Return | Reserved clean passthrough path |
+| 0x13 | 0x401B3864 | Mode 19: Clean Epilogue Return | Reserved clean passthrough path |
+| 0x14 | 0x401B3448 | Mode 20: Movie Mode HUD (Time Elapsed) | Video recording HUD displaying elapsed time and audio indicator |
+| 0x15 | 0x401B3458 | Mode 21: Movie Mode HUD (Remaining Storage) | Video recording HUD displaying remaining seconds and memory meter |
+| 0x16 | 0x401B3468 | Mode 22: Voice Recording HUD | Audio memo recording progress and decibel meter |
+| 0x17 | 0x401B35A4 | Mode 23: Panorama Assist Mode HUD | Framing alignment guides for in-camera panorama stitching |
+| 0x18 | 0x401B3478 | Mode 24: Custom Submode Special HUD | Diagnostic mode and extended custom configuration HUD |
+
+---
+
+<a id="jt-rtos"></a>
+## RTOS Master Event Table (`0x4019e324`)
+
+- **Site Address**: `0x4019e1e8` (`RTOS_EventLoop`)
+- **Table Address**: `0x4019e324`
+- **Entry Count**: 16 entries (Events `0x00` through `0x0F`)
+- **Bounds Condition**: `event <= 0x0F`
+- **Default Target**: `0x4019e9f8` (Unhandled event exit handler)
+
+| Event Index | Target Address | Handler Symbol | Purpose & Description |
+|:---|:---|:---|:---|
+| 0x00 | 0x4019E5F0 | RTOS_Evt0_Wakeup | Subsystem Initialization & Task Wakeup |
+| 0x01 | 0x4019E8F8 | RTOS_Evt1_ModeTransition | Mode dial rotation and state transition handler |
+| 0x02 | 0x4019E6B8 | RTOS_Evt2_LensMotor | Optical zoom lens motor positioning and boundary tracking |
+| 0x03 | 0x4019E9F8 | RTOS_Evt3_Default | Unhandled event default exit handler |
+| 0x04 | 0x4019E4A8 | RTOS_Evt4_KeypadMatrix | Keypad matrix button press and release scanner |
+| 0x05 | 0x4019E9F8 | RTOS_Evt5_Default | Unhandled event default exit handler |
+| 0x06 | 0x4019E484 | RTOS_Evt6_Exposure3A | Exposure calculation, 3A AGC, and sensor AGC update |
+| 0x07 | 0x4019E9CC | RTOS_Evt7_IdleSleepSecondary | Secondary Idle Sleep Handler (calls 0x4014bb18, event 0xca07) |
+| 0x08 | 0x4019E49C | RTOS_Evt8_StrobeCapacitor | Flash strobe capacitor charge level monitoring |
+| 0x09 | 0x4019E4F4 | RTOS_Evt9_StorageMedia | xD-Picture Card insertion / removal event |
+| 0x0A | 0x4019E5A4 | RTOS_EvtA_BatteryVoltage | Battery ADC voltage monitor and threshold alert |
+| 0x0B | 0x4019E4C0 | RTOS_EvtB_Autofocus | Autofocus motor lock and focus completion notification |
+| 0x0C | 0x4019E4DC | RTOS_EvtC_ShutterRelease | Mechanical shutter release and aperture actuation |
+| 0x0D | 0x4019E4E8 | RTOS_EvtD_VideoSync | Video recording frame sync and drop monitor |
+| 0x0E | 0x4019E9F8 | RTOS_EvtE_LcdDimming | LCD Backlight Dimming event (150s idle timeout, event 0xca0e) |
+| 0x0F | 0x4019E9C0 | RTOS_EvtF_IdleSleepPrimary | Primary Idle Sleep Handler (180s idle timeout, event 0xca0f, calls 0x4014b264) |
+
+---
+
+<a id="discovered-jump-tables"></a>
+## Discovered Jump Tables Catalog
+
+Complete catalog of all 308 jump tables extracted from Section 1 firmware:
+
+| # | Table Address | Dispatcher Site | Entries | Bounds Condition | Default Target |
+|:---|:---|:---|:---|:---|:---|
+| 1 | 0x400068A4 | 0x400068A0 | 8 | index <= 0x7 | 0x40006AC0 |
+| 2 | 0x40006B24 | 0x40006B20 | 8 | index <= 0x7 | 0x40006C40 |
+| 3 | 0x400073E8 | 0x400073E4 | 7 | index <= 0x6 | 0x40007754 |
+| 4 | 0x4000838C | 0x40008388 | 11 | index <= 0xA | 0x400084F8 |
+| 5 | 0x40008460 | 0x4000845C | 11 | index <= 0xA | 0x400084E4 |
+| 6 | 0x40029964 | 0x40029960 | 12 | index <= 0xB | 0x40029C20 |
+| 7 | 0x40035B2C | 0x40035B28 | 11 | index <= 0xA | 0x40035DA8 |
+| 8 | 0x40035DEC | 0x40035DE8 | 11 | index <= 0xA | 0x40035F0C |
+| 9 | 0x40041678 | 0x40041674 | 9 | index <= 0x8 | 0x400416E0 |
+| 10 | 0x400418B0 | 0x400418AC | 7 | index <= 0x6 | 0x400419C4 |
+| 11 | 0x400419FC | 0x400419F8 | 7 | index <= 0x6 | 0x40041AF4 |
+| 12 | 0x40046C7C | 0x40046C78 | 9 | index <= 0x8 | 0x40046CC0 |
+| 13 | 0x4005C7E4 | 0x4005C7E0 | 9 | index <= 0x8 | 0x4005C850 |
+| 14 | 0x4005CAC8 | 0x4005CAC4 | 9 | index <= 0x8 | 0x4005CB88 |
+| 15 | 0x4006D3A4 | 0x4006D3A0 | 30 | index <= 0x1D | 0x4006D558 |
+| 16 | 0x40070BD4 | 0x40070BD0 | 9 | index <= 0x8 | 0x40070C38 |
+| 17 | 0x40070C94 | 0x40070C90 | 9 | index <= 0x8 | 0x40070CF8 |
+| 18 | 0x40074DE0 | 0x40074DDC | 8 | index <= 0x7 | 0x40074F48 |
+| 19 | 0x4007514C | 0x40075148 | 8 | index <= 0x7 | 0x400753CC |
+| 20 | 0x4007D8DC | 0x4007D8D8 | 10 | index <= 0x9 | 0x4007DC2C |
+| 21 | 0x400858C4 | 0x400858C0 | 11 | index <= 0xA | 0x4008593C |
+| 22 | 0x4008596C | 0x40085968 | 32 | index <= 0x1F | 0x40085A74 |
+| 23 | 0x40085AA4 | 0x40085AA0 | 17 | index <= 0x10 | 0x400860BC |
+| 24 | 0x40087814 | 0x40087810 | 11 | index <= 0xA | 0x40087890 |
+| 25 | 0x400878E4 | 0x400878E0 | 18 | index <= 0x11 | 0x40087978 |
+| 26 | 0x400879A4 | 0x400879A0 | 17 | index <= 0x10 | 0x40087A98 |
+| 27 | 0x4008891C | 0x40088918 | 11 | index <= 0xA | 0x40088994 |
+| 28 | 0x400889C4 | 0x400889C0 | 32 | index <= 0x1F | 0x40088AA8 |
+| 29 | 0x40088AD8 | 0x40088AD4 | 17 | index <= 0x10 | 0x40088F8C |
+| 30 | 0x4008C964 | 0x4008C960 | 11 | index <= 0xA | 0x4008CAA4 |
+| 31 | 0x4008CAC8 | 0x4008CAC4 | 11 | index <= 0xA | 0x4008CC54 |
+| 32 | 0x4008CC90 | 0x4008CC8C | 11 | index <= 0xA | 0x4008D410 |
+| 33 | 0x4008D44C | 0x4008D448 | 11 | index <= 0xA | 0x4008D884 |
+| 34 | 0x4008D8C0 | 0x4008D8BC | 11 | index <= 0xA | 0x4008DB40 |
+| 35 | 0x4008DB7C | 0x4008DB78 | 11 | index <= 0xA | 0x4008DDC4 |
+| 36 | 0x4008DE00 | 0x4008DDFC | 11 | index <= 0xA | 0x4008DF90 |
+| 37 | 0x4008DFCC | 0x4008DFC8 | 11 | index <= 0xA | 0x4008E15C |
+| 38 | 0x4008E76C | 0x4008E768 | 7 | index <= 0x6 | 0x4008E7F4 |
+| 39 | 0x400945A8 | 0x400945A4 | 12 | index <= 0xB | 0x40094650 |
+| 40 | 0x40096EBC | 0x40096EB8 | 9 | index <= 0x8 | 0x40096F40 |
+| 41 | 0x400AB4C8 | 0x400AB4C4 | 32 | index <= 0x1F | 0x400AB6C0 |
+| 42 | 0x400AB700 | 0x400AB6FC | 7 | index <= 0x6 | 0x400AB81C |
+| 43 | 0x400AB8CC | 0x400AB8C8 | 9 | index <= 0x8 | 0x400ABA34 |
+| 44 | 0x400B8608 | 0x400B8604 | 10 | index <= 0x9 | 0x400B8744 |
+| 45 | 0x400BFF7C | 0x400BFF78 | 8 | index <= 0x7 | 0x400C0108 |
+| 46 | 0x400D2A30 | 0x400D2A2C | 20 | index <= 0x13 | 0x400D2BFC |
+| 47 | 0x400D5274 | 0x400D5270 | 16 | index <= 0xF | 0x400D5334 |
+| 48 | 0x400D7D98 | 0x400D7D94 | 16 | index <= 0xF | 0x400D7EA8 |
+| 49 | 0x400D82A4 | 0x400D82A0 | 26 | index <= 0x19 | 0x400D837C |
+| 50 | 0x400D8BB4 | 0x400D8BB0 | 7 | index <= 0x6 | 0x400D8E84 |
+| 51 | 0x400DE484 | 0x400DE480 | 18 | index <= 0x11 | 0x400DE7EC |
+| 52 | 0x400E49CC | 0x400E49C8 | 8 | index <= 0x7 | 0x400E4CD8 |
+| 53 | 0x400F20A0 | 0x400F209C | 13 | index <= 0xC | 0x400F2254 |
+| 54 | 0x400F22AC | 0x400F22A8 | 13 | index <= 0xC | 0x400F23C0 |
+| 55 | 0x400F7BAC | 0x400F7BA8 | 13 | index <= 0xC | 0x400F7C1C |
+| 56 | 0x400F7C4C | 0x400F7C48 | 13 | index <= 0xC | 0x400F7CE0 |
+| 57 | 0x400F9A80 | 0x400F9A7C | 10 | index <= 0x9 | 0x400F9BC0 |
+| 58 | 0x400FB8A4 | 0x400FB8A0 | 10 | index <= 0x9 | 0x400FBAF4 |
+| 59 | 0x40100E48 | 0x40100E44 | 10 | index <= 0x9 | 0x40100F28 |
+| 60 | 0x40102A98 | 0x40102A94 | 26 | index <= 0x19 | 0x40102B70 |
+| 61 | 0x40108A40 | 0x40108A3C | 13 | index <= 0xC | 0x40108B78 |
+| 62 | 0x4010C2D4 | 0x4010C2D0 | 12 | index <= 0xB | 0x4010C424 |
+| 63 | 0x4010C4C4 | 0x4010C4C0 | 12 | index <= 0xB | 0x4010C6A4 |
+| 64 | 0x401109EC | 0x401109E8 | 41 | index <= 0x28 | 0x40111350 |
+| 65 | 0x401166B4 | 0x401166B0 | 25 | index <= 0x18 | 0x40116878 |
+| 66 | 0x40117438 | 0x40117434 | 25 | index <= 0x18 | 0x4011762C |
+| 67 | 0x4011B214 | 0x4011B1C8 | 99 | index <= 0x62 | 0x4011B814 |
+| 68 | 0x4011EADC | 0x4011EAD8 | 15 | index <= 0xE | 0x4011EB70 |
+| 69 | 0x40121BB4 | 0x40121BB0 | 8 | index <= 0x7 | 0x40121C5C |
+| 70 | 0x40121D60 | 0x40121D5C | 18 | index <= 0x11 | 0x40122114 |
+| 71 | 0x40128FE8 | 0x40128FE4 | 20 | index <= 0x13 | 0x401290D0 |
+| 72 | 0x4012A12C | 0x4012A128 | 41 | index <= 0x28 | 0x4012A4B0 |
+| 73 | 0x4012C59C | 0x4012C598 | 8 | index <= 0x7 | 0x4012C69C |
+| 74 | 0x40131860 | 0x4013185C | 10 | index <= 0x9 | 0x40131914 |
+| 75 | 0x40131968 | 0x40131964 | 1 | index <= 0x0 | 0x40131A84 |
+| 76 | 0x40136630 | 0x4013662C | 15 | index <= 0xE | 0x4013674C |
+| 77 | 0x401368FC | 0x401368F8 | 10 | index <= 0x9 | 0x40136A10 |
+| 78 | 0x401376E0 | 0x401376DC | 32 | index <= 0x1F | 0x40137840 |
+| 79 | 0x4013E31C | 0x4013E318 | 10 | index <= 0x9 | 0x4013E3BC |
+| 80 | 0x4013FC18 | 0x4013FC14 | 7 | index <= 0x6 | 0x401401C4 |
+| 81 | 0x40150664 | 0x40150660 | 38 | index <= 0x25 | 0x40150EF4 |
+| 82 | 0x40151260 | 0x4015125C | 35 | index <= 0x22 | 0x40151634 |
+| 83 | 0x401520EC | 0x401520E8 | 32 | index <= 0x1F | 0x40152264 |
+| 84 | 0x401548B4 | 0x401548B0 | 12 | index <= 0xB | 0x40154B88 |
+| 85 | 0x4015960C | 0x40159608 | 10 | index <= 0x9 | 0x40159790 |
+| 86 | 0x4015DD94 | 0x4015DD90 | 23 | index <= 0x16 | 0x4015DEAC |
+| 87 | 0x40162244 | 0x40162240 | 9 | index <= 0x8 | 0x401622B0 |
+| 88 | 0x401622D4 | 0x401622D0 | 12 | index <= 0xB | 0x40162364 |
+| 89 | 0x40162388 | 0x40162384 | 16 | index <= 0xF | 0x40162448 |
+| 90 | 0x4016246C | 0x40162468 | 20 | index <= 0x13 | 0x4016255C |
+| 91 | 0x40162580 | 0x4016257C | 25 | index <= 0x18 | 0x401626AC |
+| 92 | 0x40168478 | 0x40168474 | 9 | index <= 0x8 | 0x401684E8 |
+| 93 | 0x4016C3C4 | 0x4016C3C0 | 9 | index <= 0x8 | 0x4016C428 |
+| 94 | 0x4016EEB0 | 0x4016EEAC | 13 | index <= 0xC | 0x4016EF04 |
+| 95 | 0x40171DEC | 0x40171DE8 | 21 | index <= 0x14 | 0x40171F80 |
+| 96 | 0x40171FEC | 0x40171FE8 | 12 | index <= 0xB | 0x4017206C |
+| 97 | 0x401741F8 | 0x401741F4 | 7 | index <= 0x6 | 0x401742F4 |
+| 98 | 0x40174338 | 0x40174334 | 7 | index <= 0x6 | 0x40174468 |
+| 99 | 0x401744AC | 0x401744A8 | 7 | index <= 0x6 | 0x401745DC |
+| 100 | 0x40175770 | 0x4017576C | 7 | index <= 0x6 | 0x40175BAC |
+| 101 | 0x401870A8 | 0x401870A4 | 9 | index <= 0x8 | 0x40187278 |
+| 102 | 0x401875BC | 0x401875B8 | 9 | index <= 0x8 | 0x40187708 |
+| 103 | 0x4018CF68 | 0x4018CF64 | 7 | index <= 0x6 | 0x4018D014 |
+| 104 | 0x4018D19C | 0x4018D198 | 32 | index <= 0x1F | 0x4018D314 |
+| 105 | 0x4018D384 | 0x4018D380 | 38 | index <= 0x25 | 0x4018E304 |
+| 106 | 0x4018D438 | 0x4018D434 | 25 | index <= 0x18 | 0x4018E304 |
+| 107 | 0x4018D4C4 | 0x4018D4C0 | 32 | index <= 0x1F | 0x4018E304 |
+| 108 | 0x4018D560 | 0x4018D55C | 10 | index <= 0x9 | 0x4018E304 |
+| 109 | 0x4018D630 | 0x4018D62C | 10 | index <= 0x9 | 0x4018E304 |
+| 110 | 0x4018D698 | 0x4018D694 | 12 | index <= 0xB | 0x4018E304 |
+| 111 | 0x4018D6E4 | 0x4018D6E0 | 11 | index <= 0xA | 0x4018E304 |
+| 112 | 0x4018D848 | 0x4018D844 | 9 | index <= 0x8 | 0x4018E304 |
+| 113 | 0x4018DD90 | 0x4018DD8C | 7 | index <= 0x6 | 0x4018E304 |
+| 114 | 0x4018E124 | 0x4018E120 | 12 | index <= 0xB | 0x4018E300 |
+| 115 | 0x4018E17C | 0x4018E178 | 30 | index <= 0x1D | 0x4018E2B4 |
+| 116 | 0x40199890 | 0x4019988C | 11 | index <= 0xA | 0x40199AF4 |
+| 117 | 0x4019BCA0 | 0x4019BC9C | 16 | index <= 0xF | 0x4019BCE0 |
+| 118 | 0x4019E324 | 0x4019E1E8 | 16 | event <= 0x0F | 0x4019E9F8 |
+| 119 | 0x401A07A4 | 0x401A07A0 | 30 | index <= 0x1D | 0x401A08FC |
+| 120 | 0x401A0958 | 0x401A0954 | 12 | index <= 0xB | 0x401A0A78 |
+| 121 | 0x401A3E88 | 0x401A3E84 | 76 | index <= 0x4B | 0x401A4D18 |
+| 122 | 0x401A3FE0 | 0x401A3FDC | 63 | index <= 0x3E | 0x401A4D18 |
+| 123 | 0x401A4104 | 0x401A4100 | 74 | index <= 0x49 | 0x401A4D18 |
+| 124 | 0x401A5F20 | 0x401A5F1C | 9 | index <= 0x8 | 0x401A6124 |
+| 125 | 0x401AC938 | 0x401AC934 | 12 | index <= 0xB | 0x401ACD1C |
+| 126 | 0x401AF28C | 0x401AF288 | 9 | index <= 0x8 | 0x401AF2F8 |
+| 127 | 0x401AF31C | 0x401AF318 | 9 | index <= 0x8 | 0x401AF388 |
+| 128 | 0x401AF3D0 | 0x401AF3CC | 12 | index <= 0xB | 0x401AF460 |
+| 129 | 0x401AF494 | 0x401AF490 | 12 | index <= 0xB | 0x401AF524 |
+| 130 | 0x401AF548 | 0x401AF544 | 12 | index <= 0xB | 0x401AF5D8 |
+| 131 | 0x401AF60C | 0x401AF608 | 12 | index <= 0xB | 0x401AF69C |
+| 132 | 0x401AF6D0 | 0x401AF6CC | 12 | index <= 0xB | 0x401AF760 |
+| 133 | 0x401AF784 | 0x401AF780 | 12 | index <= 0xB | 0x401AF814 |
+| 134 | 0x401AF848 | 0x401AF844 | 16 | index <= 0xF | 0x401AF908 |
+| 135 | 0x401AF92C | 0x401AF928 | 16 | index <= 0xF | 0x401AFBCC |
+| 136 | 0x401AFBF0 | 0x401AFBEC | 20 | index <= 0x13 | 0x401AFCE0 |
+| 137 | 0x401AFD14 | 0x401AFD10 | 25 | index <= 0x18 | 0x401AFE40 |
+| 138 | 0x401AFE64 | 0x401AFE60 | 25 | index <= 0x18 | 0x401AFF90 |
+| 139 | 0x401AFFC4 | 0x401AFFC0 | 42 | index <= 0x29 | 0x401B01BC |
+| 140 | 0x401B01E0 | 0x401B01DC | 42 | index <= 0x29 | 0x401B03D8 |
+| 141 | 0x401B3324 | 0x401B32F4 | 25 | mode <= 0x18 | 0x401B3864 |
+| 142 | 0x401B38A4 | 0x401B38A0 | 14 | index <= 0xD | 0x401B3980 |
+| 143 | 0x401BBA94 | 0x401BBA90 | 7 | index <= 0x6 | 0x401BBC58 |
+| 144 | 0x401BBB48 | 0x401BBB44 | 7 | index <= 0x6 | 0x401BBC58 |
+| 145 | 0x401BBBEC | 0x401BBBE8 | 7 | index <= 0x6 | 0x401BBC58 |
+| 146 | 0x401BC16C | 0x401BC168 | 7 | index <= 0x6 | 0x401BC204 |
+| 147 | 0x401BC248 | 0x401BC244 | 7 | index <= 0x6 | 0x401BC2C0 |
+| 148 | 0x401BC2F4 | 0x401BC2F0 | 7 | index <= 0x6 | 0x401BC398 |
+| 149 | 0x401BCE08 | 0x401BCE04 | 83 | index <= 0x52 | 0x401BD3F4 |
+| 150 | 0x401C5258 | 0x401C5254 | 156 | index <= 0x9B | 0x401CB81C |
+| 151 | 0x401CCCAC | 0x401CCCA8 | 23 | index <= 0x16 | 0x401CCDC0 |
+| 152 | 0x401D4458 | 0x401D4454 | 11 | index <= 0xA | 0x401D5054 |
+| 153 | 0x401D44A4 | 0x401D44A0 | 30 | index <= 0x1D | 0x401D45F4 |
+| 154 | 0x401D4628 | 0x401D4624 | 16 | index <= 0xF | 0x401D46D0 |
+| 155 | 0x401D4A88 | 0x401D4A84 | 7 | index <= 0x6 | 0x401D4ADC |
+| 156 | 0x401D4E5C | 0x401D4E58 | 16 | index <= 0xF | 0x401D4F04 |
+| 157 | 0x401D66B8 | 0x401D66B4 | 20 | index <= 0x13 | 0x401D67D4 |
+| 158 | 0x401D6980 | 0x401D697C | 13 | index <= 0xC | 0x401D70AC |
+| 159 | 0x401D72F8 | 0x401D71E8 | 114 | index <= 0x71 | 0x401D985C |
+| 160 | 0x401D98CC | 0x401D98C8 | 24 | index <= 0x17 | 0x401DA3B8 |
+| 161 | 0x401DA6BC | 0x401DA6B8 | 11 | index <= 0xA | 0x401DA788 |
+| 162 | 0x401DA848 | 0x401DA844 | 19 | index <= 0x12 | 0x401DA9FC |
+| 163 | 0x401DAFB0 | 0x401DAFAC | 7 | index <= 0x6 | 0x401DB058 |
+| 164 | 0x401DBDA4 | 0x401DBDA0 | 23 | index <= 0x16 | 0x401DC3E8 |
+| 165 | 0x401DC418 | 0x401DC414 | 14 | index <= 0xD | 0x401DC7F4 |
+| 166 | 0x401DC868 | 0x401DC864 | 30 | index <= 0x1D | 0x401DCA68 |
+| 167 | 0x401DCF7C | 0x401DCF78 | 30 | index <= 0x1D | 0x401DD0A0 |
+| 168 | 0x401DE474 | 0x401DE470 | 22 | index <= 0x15 | 0x401DF2C0 |
+| 169 | 0x401DF330 | 0x401DF32C | 12 | index <= 0xB | 0x401DF420 |
+| 170 | 0x401DF52C | 0x401DF528 | 7 | index <= 0x6 | 0x401DF6C4 |
+| 171 | 0x401E377C | 0x401E3778 | 28 | index <= 0x1B | 0x401E47B8 |
+| 172 | 0x401E3860 | 0x401E385C | 37 | index <= 0x24 | 0x401E47B8 |
+| 173 | 0x401E3A70 | 0x401E3A6C | 9 | index <= 0x8 | 0x401E3AD4 |
+| 174 | 0x401E3B28 | 0x401E3B24 | 9 | index <= 0x8 | 0x401E3B8C |
+| 175 | 0x401E3F34 | 0x401E3F30 | 16 | index <= 0xF | 0x401E47B8 |
+| 176 | 0x401E4434 | 0x401E4430 | 15 | index <= 0xE | 0x401E47B8 |
+| 177 | 0x401E4508 | 0x401E4504 | 30 | index <= 0x1D | 0x401E47B8 |
+| 178 | 0x401E4938 | 0x401E4934 | 13 | index <= 0xC | 0x401E4AC0 |
+| 179 | 0x401E49F0 | 0x401E49EC | 13 | index <= 0xC | 0x401E4AC0 |
+| 180 | 0x401E8154 | 0x401E8150 | 7 | index <= 0x6 | 0x401E841C |
+| 181 | 0x401EDD44 | 0x401EDD40 | 38 | index <= 0x25 | 0x401EDF80 |
+| 182 | 0x401EF558 | 0x401EF554 | 11 | index <= 0xA | 0x401EF860 |
+| 183 | 0x40200FB4 | 0x40200FB0 | 7 | index <= 0x6 | 0x40201A10 |
+| 184 | 0x40211830 | 0x4021182C | 8 | index <= 0x7 | 0x40211888 |
+| 185 | 0x40211D54 | 0x40211D50 | 8 | index <= 0x7 | 0x40211DAC |
+| 186 | 0x40212820 | 0x4021281C | 9 | index <= 0x8 | 0x40214FC0 |
+| 187 | 0x402128F4 | 0x402128F0 | 7 | index <= 0x6 | 0x40212960 |
+| 188 | 0x402129B4 | 0x402129B0 | 7 | index <= 0x6 | 0x40215058 |
+| 189 | 0x40212B44 | 0x40212B40 | 7 | index <= 0x6 | 0x40212BB0 |
+| 190 | 0x40212C04 | 0x40212C00 | 7 | index <= 0x6 | 0x40215058 |
+| 191 | 0x40212E18 | 0x40212E14 | 7 | index <= 0x6 | 0x40212E84 |
+| 192 | 0x40212EAC | 0x40212EA8 | 7 | index <= 0x6 | 0x40212F18 |
+| 193 | 0x40212F74 | 0x40212F70 | 7 | index <= 0x6 | 0x40215058 |
+| 194 | 0x40213070 | 0x4021306C | 7 | index <= 0x6 | 0x40215058 |
+| 195 | 0x40213300 | 0x402132FC | 7 | index <= 0x6 | 0x4021336C |
+| 196 | 0x4021339C | 0x40213398 | 7 | index <= 0x6 | 0x40213408 |
+| 197 | 0x40213430 | 0x4021342C | 7 | index <= 0x6 | 0x4021349C |
+| 198 | 0x402134F8 | 0x402134F4 | 7 | index <= 0x6 | 0x40215058 |
+| 199 | 0x402135FC | 0x402135F8 | 7 | index <= 0x6 | 0x40215058 |
+| 200 | 0x40213870 | 0x4021386C | 7 | index <= 0x6 | 0x40215058 |
+| 201 | 0x40213A00 | 0x402139FC | 7 | index <= 0x6 | 0x40213A6C |
+| 202 | 0x40213AC0 | 0x40213ABC | 7 | index <= 0x6 | 0x40215058 |
+| 203 | 0x40213CE0 | 0x40213CDC | 7 | index <= 0x6 | 0x40213D4C |
+| 204 | 0x40213D74 | 0x40213D70 | 7 | index <= 0x6 | 0x40213DE0 |
+| 205 | 0x40213E3C | 0x40213E38 | 7 | index <= 0x6 | 0x40215058 |
+| 206 | 0x40213F38 | 0x40213F34 | 7 | index <= 0x6 | 0x40215058 |
+| 207 | 0x40214174 | 0x40214170 | 7 | index <= 0x6 | 0x402141E0 |
+| 208 | 0x40214210 | 0x4021420C | 7 | index <= 0x6 | 0x4021427C |
+| 209 | 0x402142A4 | 0x402142A0 | 7 | index <= 0x6 | 0x40214310 |
+| 210 | 0x4021436C | 0x40214368 | 7 | index <= 0x6 | 0x40215058 |
+| 211 | 0x40214470 | 0x4021446C | 7 | index <= 0x6 | 0x40215058 |
+| 212 | 0x4021456C | 0x40214568 | 7 | index <= 0x6 | 0x40215058 |
+| 213 | 0x4021494C | 0x40214948 | 7 | index <= 0x6 | 0x402149B8 |
+| 214 | 0x402149E8 | 0x402149E4 | 7 | index <= 0x6 | 0x40214A54 |
+| 215 | 0x40214A84 | 0x40214A80 | 7 | index <= 0x6 | 0x40214AF0 |
+| 216 | 0x40214B18 | 0x40214B14 | 7 | index <= 0x6 | 0x40214B84 |
+| 217 | 0x40214BE0 | 0x40214BDC | 7 | index <= 0x6 | 0x40215058 |
+| 218 | 0x40214CE4 | 0x40214CE0 | 7 | index <= 0x6 | 0x40215058 |
+| 219 | 0x40214DE8 | 0x40214DE4 | 7 | index <= 0x6 | 0x40215058 |
+| 220 | 0x40214EE4 | 0x40214EE0 | 7 | index <= 0x6 | 0x40215058 |
+| 221 | 0x40216C84 | 0x40216C80 | 15 | index <= 0xE | 0x40216D74 |
+| 222 | 0x4021E6B8 | 0x4021E6B4 | 15 | index <= 0xE | 0x4021E85C |
+| 223 | 0x4021EEAC | 0x4021EEA8 | 10 | index <= 0x9 | 0x4021EF20 |
+| 224 | 0x40221C3C | 0x40221C38 | 24 | index <= 0x17 | 0x40222214 |
+| 225 | 0x40222658 | 0x40222654 | 11 | index <= 0xA | 0x402233CC |
+| 226 | 0x40231B94 | 0x40231B90 | 7 | index <= 0x6 | 0x40231C40 |
+| 227 | 0x4023803C | 0x40238038 | 11 | index <= 0xA | 0x40238124 |
+| 228 | 0x4023B7AC | 0x4023B7A8 | 8 | index <= 0x7 | 0x4023B86C |
+| 229 | 0x4023DB38 | 0x4023DB34 | 3 | index <= 0x2 | 0x4023DDDC |
+| 230 | 0x40247568 | 0x40247564 | 9 | index <= 0x8 | 0x402475E0 |
+| 231 | 0x40248908 | 0x40248904 | 16 | index <= 0xF | 0x40248A88 |
+| 232 | 0x402496EC | 0x402496E8 | 23 | index <= 0x16 | 0x40249874 |
+| 233 | 0x4024ABC4 | 0x4024ABC0 | 9 | index <= 0x8 | 0x4024ACCC |
+| 234 | 0x4024AD40 | 0x4024AD3C | 7 | index <= 0x6 | 0x4024ADE8 |
+| 235 | 0x4024DD20 | 0x4024DD1C | 12 | index <= 0xB | 0x4024DD78 |
+| 236 | 0x4024EF78 | 0x4024EF24 | 50 | index <= 0x31 | 0x4024F368 |
+| 237 | 0x40252FBC | 0x40252FB8 | 43 | index <= 0x2A | 0x40253254 |
+| 238 | 0x40263A40 | 0x40263A3C | 8 | index <= 0x7 | 0x40263B28 |
+| 239 | 0x40263C7C | 0x40263C78 | 7 | index <= 0x6 | 0x40263D38 |
+| 240 | 0x40263E98 | 0x40263E94 | 14 | index <= 0xD | 0x40263FAC |
+| 241 | 0x40263FFC | 0x40263FF8 | 10 | index <= 0x9 | 0x40264114 |
+| 242 | 0x40267504 | 0x40267500 | 30 | index <= 0x1D | 0x402678B0 |
+| 243 | 0x4026867C | 0x40268678 | 7 | index <= 0x6 | 0x40268738 |
+| 244 | 0x40268764 | 0x40268760 | 40 | index <= 0x27 | 0x402688E0 |
+| 245 | 0x40268E2C | 0x40268E28 | 73 | index <= 0x48 | 0x40269744 |
+| 246 | 0x402695C0 | 0x402695BC | 30 | index <= 0x1D | 0x40269718 |
+| 247 | 0x4026999C | 0x40269998 | 7 | index <= 0x6 | 0x40269A48 |
+| 248 | 0x40270024 | 0x40270020 | 7 | index <= 0x6 | 0x402700F8 |
+| 249 | 0x40272FC4 | 0x40272FC0 | 16 | index <= 0xF | 0x40273200 |
+| 250 | 0x40280594 | 0x40280590 | 7 | index <= 0x6 | 0x402806A8 |
+| 251 | 0x40286E88 | 0x40286E84 | 17 | index <= 0x10 | 0x40287110 |
+| 252 | 0x4028F6D0 | 0x4028F6CC | 13 | index <= 0xC | 0x4028F830 |
+| 253 | 0x4029053C | 0x40290538 | 12 | index <= 0xB | 0x4029092C |
+| 254 | 0x402909DC | 0x402909D8 | 8 | index <= 0x7 | 0x40290A74 |
+| 255 | 0x402AAAD4 | 0x402AAAD0 | 9 | index <= 0x8 | 0x402AAB38 |
+| 256 | 0x402AE2D0 | 0x402AE2CC | 12 | index <= 0xB | 0x402AE3A0 |
+| 257 | 0x402AE510 | 0x402AE50C | 25 | index <= 0x18 | 0x402AE9D4 |
+| 258 | 0x402AEB70 | 0x402AEB6C | 16 | index <= 0xF | 0x402AF57C |
+| 259 | 0x402AF5FC | 0x402AF5F8 | 16 | index <= 0xF | 0x402B006C |
+| 260 | 0x402CA34C | 0x402CA348 | 14 | index <= 0xD | 0x402CA594 |
+| 261 | 0x402CC000 | 0x402CBFFC | 7 | index <= 0x6 | 0x402CC070 |
+| 262 | 0x402CC7E4 | 0x402CC7E0 | 7 | index <= 0x6 | 0x402CC84C |
+| 263 | 0x402CC964 | 0x402CC960 | 8 | index <= 0x7 | 0x402CCAAC |
+| 264 | 0x402D0F74 | 0x402D0F70 | 14 | index <= 0xD | 0x402D103C |
+| 265 | 0x402D63EC | 0x402D63E8 | 13 | index <= 0xC | 0x402D64BC |
+| 266 | 0x402E98B4 | 0x402E98B0 | 13 | index <= 0xC | 0x402E9EDC |
+| 267 | 0x402EA438 | 0x402EA434 | 13 | index <= 0xC | 0x402EA9B0 |
+| 268 | 0x402EAD24 | 0x402EAD20 | 8 | index <= 0x7 | 0x402EB66C |
+| 269 | 0x402F37F4 | 0x402F37F0 | 9 | index <= 0x8 | 0x402F46CC |
+| 270 | 0x402F650C | 0x402F6508 | 7 | index <= 0x6 | 0x402F6E8C |
+| 271 | 0x402F7E44 | 0x402F7E40 | 10 | index <= 0x9 | 0x402F8134 |
+| 272 | 0x402F81C8 | 0x402F81C4 | 10 | index <= 0x9 | 0x402F861C |
+| 273 | 0x402F8A98 | 0x402F8A94 | 10 | index <= 0x9 | 0x402F8BAC |
+| 274 | 0x402F8BE0 | 0x402F8BDC | 10 | index <= 0x9 | 0x402F8D1C |
+| 275 | 0x402F90E0 | 0x402F90DC | 10 | index <= 0x9 | 0x402F91D0 |
+| 276 | 0x402F937C | 0x402F9378 | 10 | index <= 0x9 | 0x402F9CF4 |
+| 277 | 0x402FAEB0 | 0x402FAEAC | 30 | index <= 0x1D | 0x402FAFDC |
+| 278 | 0x402FB114 | 0x402FB110 | 8 | index <= 0x7 | 0x402FB35C |
+| 279 | 0x402FC138 | 0x402FC134 | 8 | index <= 0x7 | 0x402FC238 |
+| 280 | 0x403036E4 | 0x403036E0 | 27 | index <= 0x1A | 0x403051A8 |
+| 281 | 0x40305714 | 0x40305710 | 14 | index <= 0xD | 0x403063DC |
+| 282 | 0x40309348 | 0x40309344 | 11 | index <= 0xA | 0x40309448 |
+| 283 | 0x40309590 | 0x4030958C | 10 | index <= 0x9 | 0x4030992C |
+| 284 | 0x4030D8FC | 0x4030D8F8 | 14 | index <= 0xD | 0x4030DAE8 |
+| 285 | 0x4030D95C | 0x4030D958 | 9 | index <= 0x8 | 0x4030DAE8 |
+| 286 | 0x4030DB44 | 0x4030DB40 | 23 | index <= 0x16 | 0x4030DCE4 |
+| 287 | 0x40310CA8 | 0x40310CA4 | 75 | index <= 0x4A | 0x403115D0 |
+| 288 | 0x403116C4 | 0x403116C0 | 75 | index <= 0x4A | 0x40311EF4 |
+| 289 | 0x40311FC8 | 0x40311FC4 | 75 | index <= 0x4A | 0x40312D68 |
+| 290 | 0x40315D38 | 0x40315D34 | 11 | index <= 0xA | 0x40315EE4 |
+| 291 | 0x4031E490 | 0x4031E48C | 19 | index <= 0x12 | 0x4031EA08 |
+| 292 | 0x40328524 | 0x40328520 | 55 | index <= 0x36 | 0x40328F08 |
+| 293 | 0x40328628 | 0x40328624 | 147 | index <= 0x92 | 0x40328F08 |
+| 294 | 0x40328F5C | 0x40328F58 | 197 | index <= 0xC4 | 0x403298E4 |
+| 295 | 0x403299A4 | 0x403299A0 | 178 | index <= 0xB1 | 0x4032A3F4 |
+| 296 | 0x40329C94 | 0x40329C90 | 27 | index <= 0x1A | 0x4032A3F4 |
+| 297 | 0x4032A5AC | 0x4032A5A8 | 21 | index <= 0x14 | 0x4032ABB4 |
+| 298 | 0x4032AC90 | 0x4032AC8C | 30 | index <= 0x1D | 0x4032B008 |
+| 299 | 0x4032B16C | 0x4032B168 | 37 | index <= 0x24 | 0x4032DA7C |
+| 300 | 0x4032B274 | 0x4032B270 | 8 | index <= 0x7 | 0x4032DA7C |
+| 301 | 0x4032BABC | 0x4032BAB8 | 124 | index <= 0x7B | 0x4032D6E8 |
+| 302 | 0x4032BCC8 | 0x4032BCC4 | 25 | index <= 0x18 | 0x4032D6E8 |
+| 303 | 0x4032BD58 | 0x4032BD54 | 16 | index <= 0xF | 0x4032D6E8 |
+| 304 | 0x4032C784 | 0x4032C780 | 8 | index <= 0x7 | 0x4032D6E8 |
+| 305 | 0x403320A4 | 0x403320A0 | 32 | index <= 0x1F | 0x40332390 |
+| 306 | 0x403323D0 | 0x403323CC | 32 | index <= 0x1F | 0x403327B4 |
+| 307 | 0x4033328C | 0x40333288 | 13 | index <= 0xC | 0x403332C0 |
+| 308 | 0x403336F8 | 0x403336F4 | 32 | index <= 0x1F | 0x40333AD8 |
