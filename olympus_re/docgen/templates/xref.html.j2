@@ -283,6 +283,21 @@
             </tbody>
           </table>
         </div>
+
+        <h3>Physical Hardware Teardown Silicon Specifications</h3>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead><tr><th>Component</th><th>Part Number</th><th>Package</th><th>Hardware Role</th></tr></thead>
+            <tbody>
+              <tr><td>Main Processor / SoC</td><td>Sanyo EV1MSS11</td><td>BGA</td><td>Olympus TruePic III / Sanyo Coach platform, ARM946E-S @ 150 MHz</td></tr>
+              <tr><td>Flash &amp; Memory (MCP)</td><td>Samsung K5R MCP</td><td>FBGA</td><td>OneNAND Flash + 32MB Mobile SDRAM (32 MB address space at 0x40000000)</td></tr>
+              <tr><td>Power Management (PMIC)</td><td>ROHM BD9739KN</td><td>QFN</td><td>7-channel switching regulator for core VDD, SDRAM IO, and sleep rails</td></tr>
+              <tr><td>Motor Driver</td><td>Sanyo LV8086</td><td>SSOP</td><td>Dual stepper/DC motor driver for 18x optical zoom and autofocus</td></tr>
+              <tr><td>EVF Controller</td><td>Kopin KCD CyberDisplay</td><td>TQFP</td><td>Electronic viewfinder micro-display controller (display destination 1)</td></tr>
+              <tr><td>Calibration EEPROM</td><td>2316GO (24C16)</td><td>8-pin SOP</td><td>16 Kbit I2C serial EEPROM storing factory lens calibration &amp; serial number</td></tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <!-- Section 2: Memory Domains -->
@@ -336,7 +351,7 @@
           <pre class="code-block">0x401b32f4: cmp   r2, #0x18         ; OSD mode bound check (0x00 to 0x18)
 0x401b32f8: ldrls pc, [pc, r2, lsl #2] ; Indirect dispatch via 0x401b3324
 0x401b32fc: b     0x401b3864        ; Default target: Clean Epilogue</pre>
-          <p>Modes <code>0x00</code> (Normal HUD), <code>0x01</code> (Grid/Histogram), <code>0x02</code>/<code>0x03</code>/<code>0x08</code> (Minimal HUD / Clean view). Central AF box renderer is at <code>0x401ad504</code>; preview compositor loop operates at <code>0x40251934</code> with hooks at <code>0x401b28b0</code>.</p>
+          <p>Modes <code>0x00</code> (Normal HUD), <code>0x01</code> (Grid/Histogram), <code>0x02</code>/<code>0x03</code>/<code>0x08</code> (Minimal HUD). Central AF box renderer is at <code>0x401ad504</code>; preview compositor loop operates at <code>0x40251934</code> with rendering managed at <code>0x401b28b0</code>.</p>
         </div>
 
         <!-- RTOS Subsystem -->
@@ -349,8 +364,9 @@
               <tbody>
                 <tr><td>0x00</td><td class="addr-cell">0x4019E5F0</td><td>Standard Task Wakeup Event</td></tr>
                 <tr><td>0x01</td><td class="addr-cell">0x4019E8F8</td><td>Mode Transition Dispatch</td></tr>
-                <tr><td>0x02</td><td class="addr-cell">0x4019E6B8</td><td>Lens Motor Position &amp; Optical Zoom Tracking</td></tr>
+                <tr><td>0x02</td><td class="addr-cell">0x4019E6B8</td><td>Lens Motor Position &amp; Optical Zoom Tracking (Sanyo LV8086)</td></tr>
                 <tr><td>0x07</td><td class="addr-cell">0x4019E9CC</td><td>Secondary Idle Sleep Event Handler (calls 0x4014bb18)</td></tr>
+                <tr><td>0x0B</td><td class="addr-cell">0x4019E4C0</td><td>Autofocus Motor Lock &amp; Focus Completion (Sanyo LV8086)</td></tr>
                 <tr><td>0x0E</td><td class="addr-cell">0x4019E9F8</td><td>LCD Backlight Dimming Event Handler (150s timeout)</td></tr>
                 <tr><td>0x0F</td><td class="addr-cell">0x4019E9C0</td><td>Primary Idle Sleep Event Handler (calls 0x4014b264)</td></tr>
               </tbody>
@@ -361,7 +377,7 @@
         <!-- Power Management -->
         <div id="subsystem-power" class="subsystem-card">
           <h3>Power Management, Display Destination &amp; Sleep Inhibit</h3>
-          <p>Global system state resides at SDRAM blackboard <code>0x41f80000</code>. Master state struct at <code>0x41f8ddcc</code> stores display output destination at offset <code>+0x5a</code>: <code>0</code> (LCD), <code>1</code> (EVF), <code>4</code> (NTSC Video Out), <code>6</code> (PAL Video Out). Inactivity countdown timer at <code>0x41f8ddac</code> ticks down to trigger sleep transitions <a class="code-link" href="#sym-0x4014b264">0x4014B264</a> and <a class="code-link" href="#sym-0x4014bb18">0x4014BB18</a>. Sleep is inhibited by query function <a class="code-link" href="#sym-0x4012fef4">0x4012FEF4</a> and polled by <code>0x40184be0</code>, which zeroes sleep threshold packet <code>sp[6]=0</code> at <code>0x40184d84</code>.</p>
+          <p>Global system state resides at SDRAM blackboard <code>0x41f80000</code>. Master state struct at <code>0x41f8ddcc</code> stores display output destination at offset <code>+0x5a</code>: <code>0</code> (LCD), <code>1</code> (EVF micro-display driven by Kopin KCD CyberDisplay controller), <code>4</code> (NTSC Video Out), <code>6</code> (PAL Video Out). Inactivity countdown timer at <code>0x41f8ddac</code> ticks down to trigger sleep transitions <a class="code-link" href="#sym-0x4014b264">0x4014B264</a> and <a class="code-link" href="#sym-0x4014bb18">0x4014BB18</a>. Sleep is inhibited by query function <a class="code-link" href="#sym-0x4012fef4">0x4012FEF4</a> and polled by <code>0x40184be0</code>, which zeroes sleep threshold packet <code>sp[6]=0</code> at <code>0x40184d84</code>, preventing the ROHM BD9739KN PMIC from entering standby sleep.</p>
         </div>
 
         <!-- Sensor / ISP Pipeline -->

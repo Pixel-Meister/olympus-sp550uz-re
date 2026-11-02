@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-sp550uz_fw_pack.py - Repack and scramble modified firmware for Olympus SP-550UZ.
+sp550uz_fw_pack.py - Repack and scramble firmware containers for Olympus SP-550UZ.
 
 Features:
 - Exact roundtrip bit-for-bit verified against SAN_E_321_1100_0000_0000.BIN.
 - Recalculates 32-bit unsigned SUM= for Section 1 and Section 2.
 - Formats official 96-byte ASCII headers.
 - Re-scrambles container via inverse 16-byte lane permutation + bitwise inversion.
-- Supports patching Section 1 directly or loading modified section files.
+- Repacks Section 1 and Section 2 binaries with verified 32-bit checksums.
 """
 
 import sys

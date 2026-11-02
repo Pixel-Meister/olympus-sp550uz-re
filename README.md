@@ -47,6 +47,21 @@ This repository provides an automated static analysis pipeline, decompiler annot
 0xE081FFFF +---------------------------------------+
 ```
 
+### Physical Hardware Teardown & Silicon Bill of Materials
+
+Physical teardown and microscopic inspection of the SP-550UZ main board identified the complete silicon Bill of Materials:
+
+| IC Component | Manufacturer & Part Number | Package | Hardware Role & Firmware Interconnect |
+| :--- | :--- | :--- | :--- |
+| **Main Processor / SoC** | Sanyo EV1MSS11 | BGA | Olympus TruePic III / Sanyo Coach platform; ARM946E-S @ 150 MHz core, 48 MHz bus; executes Section 1 code at `0x40000000` |
+| **Flash & Memory (MCP)** | Samsung K5R Multi-Chip Package | FBGA | Stacks OneNAND Flash (47MB storage via BML/STL) + 32MB Mobile SDRAM (`0x40000000`–`0x41FFFFFF`) |
+| **Power Management (PMIC)** | ROHM BD9739KN | QFN / Side A | 7-channel switching regulator supplying core VDD, SDRAM IO, CCD AFE, motor drive, and standby sleep rail |
+| **Motor Driver** | Sanyo LV8086 | SSOP / Side B | Dedicated dual stepper/DC motor driver for 18x optical zoom barrel traversal and autofocus lens positioning |
+| **EVF Micro-Display Controller** | Kopin KCD CyberDisplay | TQFP / Side B | Drives the electronic viewfinder micro-display; selected via video destination query `0x4012fef4` code `1` |
+| **Calibration EEPROM** | 2316GO (24C16) | 8-pin SOP / Side B | 16 Kbit (2 KB) I2C serial EEPROM storing factory lens calibration, CCD defect maps, and camera serial number |
+
+*For complete pinout mappings, PCB Side A/B component placement diagrams, and power rail distribution, see the [Physical Hardware Teardown Guide](docs/hardware/teardown.md).*
+
 ---
 
 ## 📦 What's in the Repository
@@ -55,13 +70,19 @@ This repository provides an automated static analysis pipeline, decompiler annot
 olympus-sp550uz-re/
 ├── olympus_re/                     # Core Python Reverse Engineering Framework
 │   ├── analysis/                   # Static analysis & ARM disassembly engine
+│   │   ├── disassembler.py         # Capstone ARMv5TE streaming disassembly engine
+│   │   ├── function_detector.py    # Prologue, BL call target, and pointer detector
+│   │   ├── jump_table_analyzer.py  # Switch/case & jump table resolver (308 tables)
+│   │   ├── literal_pool.py         # PC-relative literal pool extractor & classifier
 │   │   ├── pipeline.py             # Multi-stage symbol & function discovery pipeline
-│   │   ├── arm_disasm.py           # Pure-Python ARM946E-S instruction decoder
-│   │   ├── jump_table.py           # Switch/case & jump table resolver (308 tables)
-│   │   └── strings.py              # ASCII, Shift-JIS, and UTF-16 string extractor
-│   ├── decompiler/                 # Decompiler Annotator Scripts
+│   │   └── string_extractor.py     # ASCII, Shift-JIS, and UTF-16 string extractor
+│   ├── models/                     # Data Models & Domain Architecture
+│   │   ├── memory_map.py           # TruePic III memory domains & boundary validator
+│   │   └── symbols.py              # Symbol, Function, JumpTable, and MMIO dataclasses
+│   ├── decompiler/                 # Decompiler Annotator Scripts & Mock Harness
 │   │   ├── ghidra_sp550uz_annotator.py  # Ghidra Python annotator (headless + GUI)
-│   │   └── ida_sp550uz_annotator.py     # IDA Pro IDAPython annotator (headless + GUI)
+│   │   ├── ida_sp550uz_annotator.py     # IDA Pro IDAPython annotator (headless + GUI)
+│   │   └── mock_environment.py          # Offline test harness mocking Ghidra & IDA APIs
 │   ├── docgen/                     # Documentation Generators
 │   │   ├── generator.py            # Generates HTML single-page app & Markdown
 │   │   ├── link_validator.py       # Strict zero-dead-link & memory domain validator
@@ -75,13 +96,14 @@ olympus-sp550uz-re/
 │   └── xref/                       # Generated Markdown cross-reference reference
 │
 ├── docs/                           # Interactive Cross-Reference Documentation
+│   ├── hardware/                   # Physical Hardware Documentation
+│   │   └── teardown.md             # PCB teardown, silicon BOM, and pinout architecture
 │   ├── xref.html                   # 2.4 MB standalone, zero-dependency web explorer
 │   └── xref/                       # Modular reference chapters:
-│       ├── memory_map.md           # 8 TruePic III physical domains & bus architecture
+│       ├── index.md                # Platform summary and quick navigation index
+│       ├── memory_map.md           # 8 TruePic III physical domains & silicon architecture
 │       ├── subsystems.md           # OSD engine, RTOS dispatcher, power management
-│       ├── jump_tables.md          # Complete resolution of 25 OSD & 16 RTOS tables
-│       ├── mmio_peripherals.md     # Register map for all 7 MMIO hardware blocks
-│       └── ptp_scsi.md             # Reverse engineered PTP-over-SCSI protocol
+│       └── jump_tables.md          # Complete resolution of 25 OSD & 16 RTOS tables
 │
 ├── Resources/
 │   ├── firmware/                   # Firmware Binaries & Containers
@@ -101,10 +123,13 @@ olympus-sp550uz-re/
 │       └── reverse_engineering_log.md          # Chronological reverse engineering log
 │
 └── tests/                          # 214-Test Verification Suite
+    ├── support.py                  # Test harness constants, memory map definitions, mocks
     ├── test_tier1_features.py      # Functional tests for all 15 analysis feature groups
     ├── test_tier2_boundaries.py    # Boundary value analysis & domain limit tests
     ├── test_tier3_pairwise.py      # Combinatorial covering array tests
     ├── test_tier4_scenarios.py     # Real-world reverse engineering workflow tests
+    ├── test_adversarial_m3_challenger.py       # Adversarial link and docgen parity tests
+    ├── test_adversarial_m3_iter2_challenger.py # XSS escaping and navigation resilience
     ├── validate_v1_analysis.py     # Acceptance criterion V1 validator
     ├── validate_v2_decompiler.py   # Acceptance criterion V2 validator
     └── validate_v3_docs.py         # Acceptance criterion V3 validator
@@ -114,16 +139,34 @@ olympus-sp550uz-re/
 
 ## 🚀 How to Utilize
 
-### 1. Requirements
+### 1. Requirements & Dependencies
 
-- Python 3.8 or higher.
-- Standard library only for analysis and decompiler scripts (no external pip dependencies required).
-- Optional: `jinja2` for running the documentation generator templates (`pip install jinja2`).
-- Decompilers (optional): Ghidra 10.x+ or IDA Pro 7.x/8.x/9.x.
+- **Python**: Python 3.8 or higher.
+- **Framework Dependencies**:
+  ```bash
+  pip install capstone jinja2
+  ```
+  - `capstone`: ARM disassembly engine powering `olympus_re.analysis.disassembler`.
+  - `jinja2`: Template engine powering `olympus_re.docgen.generator`.
+- **Decompilers (Optional)**:
+  - Ghidra 10.x+ or IDA Pro 7.x/8.x/9.x.
+  - *Offline verification*: Both decompiler annotator scripts can be tested and verified offline without third-party decompiler tools via `olympus_re/decompiler/mock_environment.py`.
 
 ---
 
-### 2. Running the Static Analysis Pipeline
+### Step 1: Unpacking Stock Firmware Containers
+
+Olympus firmware updates use an obfuscated container format (`SAN_E_*.BIN`) combining a 16-byte lane permutation (`PERM16`), bitwise `XOR 0xFF`, and 32-bit unsigned sums. Extract the stock firmware:
+
+```bash
+python3 Resources/scripts/sp550uz_fw_unpack.py \
+  Resources/firmware/SAN_E_321_1100_0000_0000.BIN
+```
+*Outputs `SAN_E_321_1100_unscrambled.bin`, `sp550uz_v1.1_section1_code.bin` (Section 1 ARM code, 4,149,416 bytes), and `sp550uz_v1.1_section2_ndata.bin` (Section 2 GUI resources, 4,589,568 bytes).*
+
+---
+
+### Step 2: Running the Static Analysis Pipeline
 
 The framework provides an automated symbol and function discovery pipeline with pure-Python ARM disassembly:
 
@@ -147,11 +190,11 @@ python3 -m olympus_re.cli \
 
 ---
 
-### 3. Annotating in Ghidra
+### Step 3: Annotating in Ghidra & IDA Pro
 
-The annotator script [`olympus_re/decompiler/ghidra_sp550uz_annotator.py`](olympus_re/decompiler/ghidra_sp550uz_annotator.py) maps the complete TruePic III memory map, sets the ARM946E-S processor context, labels all 55k+ symbols, and formats jump tables.
+The framework includes dedicated decompiler annotator scripts for **Ghidra** and **IDA Pro** that map the 8 TruePic III memory segments, set ARM946E-S processor context, import 55,155 labels, and configure jump tables.
 
-#### Headless Mode (Automated / CI/CD):
+#### A. Headless Ghidra Annotation:
 ```bash
 analyzeHeadless /path/to/ghidra_projects OlympusProject \
   -import Resources/firmware/sp550uz_v1.1_section1_code.bin \
@@ -160,23 +203,7 @@ analyzeHeadless /path/to/ghidra_projects OlympusProject \
   -postScript olympus_re/decompiler/ghidra_sp550uz_annotator.py
 ```
 
-#### GUI Mode:
-1. Open Ghidra and import `Resources/firmware/sp550uz_v1.1_section1_code.bin`.
-2. Select Language: **ARM:LE:32:v5t** (ARM v5t, Little-Endian).
-3. Set Base Address to **`0x40000000`**.
-4. Open the binary in the CodeBrowser (let initial auto-analysis run).
-5. Open the **Script Manager** (`Window` &rarr; `Script Manager`).
-6. Click the script directory icon and add the path: `olympus-sp550uz-re/olympus_re/decompiler/`.
-7. Locate `ghidra_sp550uz_annotator.py` and click **Run**.
-8. The script will configure 8 memory blocks, label 55,155 symbols, and resolve all jump tables.
-
----
-
-### 4. Annotating in IDA Pro
-
-The annotator script [`olympus_re/decompiler/ida_sp550uz_annotator.py`](olympus_re/decompiler/ida_sp550uz_annotator.py) sets up IDA segments, labels functions, types data references, and constructs switch tables.
-
-#### Headless Mode (Automated / CLI):
+#### B. Headless IDA Pro Annotation:
 ```bash
 # Linux / macOS (IDA Pro 64-bit)
 idal64 -A -S"olympus_re/decompiler/ida_sp550uz_annotator.py" \
@@ -187,72 +214,69 @@ ida64.exe -A -S"olympus_re\decompiler\ida_sp550uz_annotator.py" \
   Resources\firmware\sp550uz_v1.1_section1_code.bin
 ```
 
-#### GUI Mode:
-1. Open IDA Pro and load `Resources/firmware/sp550uz_v1.1_section1_code.bin`.
-2. Select Processor: **ARM Little-endian [ARM]**.
-3. In the Disassembly Memory Organization dialog:
-   - Set **ROM start address** to `0x40000000`.
-   - Set **Loading address** to `0x40000000`.
-4. Wait for initial auto-analysis to finish (`AU: idle`).
-5. Run the script: press **Alt + F7** (or `File` &rarr; `Script file...`) and select `olympus_re/decompiler/ida_sp550uz_annotator.py`.
-6. All 8 TruePic III segments, functions, and symbols will be populated.
+#### C. Offline Mock Verification (No Decompiler Required):
+Both scripts can be verified without proprietary decompiler installations using the built-in offline mocking harness:
+```bash
+python3 tests/validate_v2_decompiler.py
+```
+*Emulates `FlatProgramAPI` and `idaapi`/`idc` environments, validating AST parsing, memory segment coverage (`0x40000000` to `0xE081FFFF`), and annotation execution.*
 
 ---
 
-### 5. Exploring the Interactive Cross-Reference Documentation
+### Step 4: Exploring Interactive Cross-Reference Documentation
 
-- **Standalone HTML Explorer:** Open [`docs/xref.html`](docs/xref.html) directly in any modern browser.
-  - Zero server or internet required (100% client-side application).
+- **Standalone HTML Web Explorer:** Open [`docs/xref.html`](docs/xref.html) directly in any modern web browser.
+  - 100% client-side application (zero web server or internet access required).
   - Instant symbol search across 55,155 entries with filtering by memory domain, symbol type (Function, Data, String, Literal), and subsystem.
   - Interactive caller/callee cross-reference graph viewer.
-  - Visual memory map navigator.
+  - Visual TruePic III memory map navigator.
   - Jump table inspector with complete branch target listings.
-- **Markdown Reference:** Browse [`docs/xref/`](docs/xref/) directly on GitHub:
-  - [`memory_map.md`](docs/xref/memory_map.md): TruePic III memory layout and hardware bus definitions.
-  - [`subsystems.md`](docs/xref/subsystems.md): Reverse engineering analysis of the OSD display pipeline, power management, and RTOS executive.
+- **Markdown Reference Chapters:** Browse [`docs/xref/`](docs/xref/) directly on GitHub:
+  - [`index.md`](docs/xref/index.md): Reference platform overview, platform summary, and quick navigation index.
+  - [`memory_map.md`](docs/xref/memory_map.md): TruePic III memory layout, 8 physical domains, hardware bus definitions, and physical silicon BOM.
+  - [`subsystems.md`](docs/xref/subsystems.md): Reverse engineering analysis of the OSD display pipeline, power management, RTOS executive, and storage layer.
   - [`jump_tables.md`](docs/xref/jump_tables.md): Complete breakdown of the 25-entry OSD dispatcher and 16-entry RTOS event table.
-  - [`mmio_peripherals.md`](docs/xref/mmio_peripherals.md): Base addresses and registers for the 7 TruePic III peripheral controllers.
-  - [`ptp_scsi.md`](docs/xref/ptp_scsi.md): PTP-over-SCSI vendor protocol specifications and command structures.
+  - [`memory_map.md#mmio-peripherals`](docs/xref/memory_map.md#mmio-peripherals): Base addresses and registers for all 7 TruePic III peripheral controllers.
+  - [`subsystems.md#ptp-over-scsi`](docs/xref/subsystems.md#ptp-over-scsi): PTP-over-SCSI vendor protocol specifications, CDB structures, and firmware flashing path.
+  - [`teardown.md`](docs/hardware/teardown.md): Detailed physical hardware teardown guide, PCB Side A/B layout, and silicon Bill of Materials.
 
-To regenerate the documentation from templates with strict link validation:
+To regenerate documentation from Jinja2 templates with strict link and memory address validation:
 ```bash
-python3 -m olympus_re.cli --analyze --doc all --docs-dir docs --strict-links
+python3 -m olympus_re.cli --docgen --strict-links
 ```
 
 ---
 
-### 6. Unpacking & Repacking Firmware Containers
+### Step 5: Repacking Firmware Containers with Verified Checksums
 
-Olympus firmware updates use a scrambled container format (`SAN_E_*.BIN`) protected by a 16-byte lane permutation (`PERM16`), `XOR 0xFF` obfuscation, and 32-bit unsigned byte sums:
+The repacker utility formats official 96-byte ASCII headers, recalculates 32-bit unsigned byte sums, applies `INV_PERM16` lane permutation, and scrambles container bytes via `XOR 0xFF`:
 
-#### Unpacking Stock Firmware:
 ```bash
-python3 Resources/scripts/sp550uz_fw_unpack.py \
-  Resources/firmware/SAN_E_321_1100_0000_0000.BIN
-```
-*Outputs `SAN_E_321_1100_unscrambled.bin`, `sp550uz_v1.1_section1_code.bin` (3,952,192 bytes), and `sp550uz_v1.1_section2_ndata.bin` (4,589,568 bytes).*
+# Verify bit-for-bit roundtrip repacking against the official Olympus v1.1 firmware
+python3 Resources/scripts/sp550uz_fw_pack.py --test
 
-#### Repacking Firmware:
-```bash
+# Repack custom section binaries into a deployable container
 python3 Resources/scripts/sp550uz_fw_pack.py \
   section1.bin section2.bin repacked_container.bin
 ```
-*Calculates Section 1 and Section 2 byte sums, formats the 96-byte ASCII header (`SANE321000000000`, `v155-77`), applies `INV_PERM16` scrambling, and generates a bit-for-bit valid update container.*
 
 ---
 
-### 7. Running the Test Suite
+### Step 6: Running the Comprehensive Verification Suite
 
-The repository includes a comprehensive 214-test suite with 100% pass rate:
+The repository includes a rigorous 214-test verification suite and 3 independent acceptance criterion validators:
 
 ```bash
-# Run the entire test suite (214 tests across 4 tiers)
-python3 -m unittest discover tests
+# Run the entire test suite (214 tests across all tiers)
+python3 -m unittest discover tests -v
 
 # Run the 3 independent acceptance criterion validators
 python3 tests/validate_v1_analysis.py    # Symbol & function static analysis validation
 python3 tests/validate_v2_decompiler.py  # Ghidra & IDA script quality validation
 python3 tests/validate_v3_docs.py        # Documentation link & memory domain validation
+
+# Run bit-for-bit firmware repacker roundtrip test
+python3 Resources/scripts/sp550uz_fw_pack.py --test
 ```
 
 ---

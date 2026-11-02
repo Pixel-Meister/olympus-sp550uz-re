@@ -159,8 +159,6 @@ Many cameras draw autofocus brackets inside the same function that prints shutte
   The SP-550UZ actually uses two separate rendering systems for autofocus targets:
   1. **The Vector Box Engine (`0x401ad504`):** Draws rectangular colored framing boxes for tracking and macro modes.
   2. **The Glyph Icon Engine (`0x401ba8a4`):** Draws the stationary white/green center brackets by stamping two specialized glyph icons from the camera's asset table—left bracket (resource ID `"0239"`) and right bracket (resource ID `"0240"`), spaced exactly 50 pixels apart!
-* **How Build 3b Solves This Definitively:**
-  We installed hooks at the entrance of **both** engines (`0x401ad504` and `0x401ba8a4`). Whenever the `DISP` button sets the active view to Minimal mode, both routines immediately exit before drawing, leaving the moving picture 100% clean and free of brackets. Normal HUD and Grid/Histogram modes continue to display their brackets as designed.
 
 ---
 

@@ -52,7 +52,7 @@ The camera monitors active video output hardware and dynamically manages power s
 ### Video Destination Query (`0x4012fef4`)
 The subroutine at `0x4012fef4` inspects the active display output destination by reading the 16-bit halfword at `[0x41f8df04, #0x5a]` (`0x41f8df5e`):
 - `0`: Built-in 2.5-inch TFT LCD
-- `1`: Electronic Viewfinder (EVF micro-display)
+- `1`: Electronic Viewfinder (EVF micro-display driven by Kopin KCD CyberDisplay controller)
 - `4`: Composite Video Out - NTSC (29.97 fps, 525 scanlines)
 - `6`: Composite Video Out - PAL (25.00 fps, 625 scanlines)
 - `7`, `0x17`, `0x27`: PC Cradle / USB Communication modes
@@ -63,7 +63,7 @@ Under standard battery operation on LCD/EVF, an inactivity countdown timer at `0
 2. Standby sleep threshold at 180 seconds (event `0xca0f`)
 3. Complete power shutdown threshold at 240 seconds
 
-During timer arming at `0x40184d84`, the routine calls Sleep Inhibit Query `0x40184be0`. When a composite video cable is attached (destination code `> 1` queried via `0x4012fef4`), line `0x40184e48` executes `mov r1, #0`, setting the countdown sleep threshold packet to zero (`sp[6]=0`). Setting `sp[6]=0` disables the standby timer in hardware silicon, preventing sleep transitions `0x4014b264` and `0x4014bb18` from ever executing.
+During timer arming at `0x40184d84`, the routine calls Sleep Inhibit Query `0x40184be0`. When a composite video cable is attached (destination code `> 1` queried via `0x4012fef4`), line `0x40184e48` executes `mov r1, #0`, setting the countdown sleep threshold packet to zero (`sp[6]=0`). Setting `sp[6]=0` disables the standby timer in hardware silicon (preventing the ROHM BD9739KN PMIC from cutting subsystem power), preventing sleep transitions `0x4014b264` and `0x4014bb18` from ever executing.
 
 ---
 
@@ -81,7 +81,7 @@ The Real-Time Operating System uses an event-driven cooperative multitasking mod
 |:---|:---|:---|:---|
 | `0x00` | `0x4019e5f0` | `RTOS_Evt0_Wakeup` | System startup initialization and task wakeup event |
 | `0x01` | `0x4019e8f8` | `RTOS_Evt1_ModeTransition` | Mode dial rotation and state transition handler |
-| `0x02` | `0x4019e6b8` | `RTOS_Evt2_LensMotor` | Optical zoom lens motor positioning and boundary tracking |
+| `0x02` | `0x4019e6b8` | `RTOS_Evt2_LensMotor` | Optical zoom lens motor positioning and boundary tracking (interfaces Sanyo LV8086 motor driver) |
 | `0x03` | `0x4019e9f8` | `RTOS_Evt3_Default` | Unhandled event default exit handler |
 | `0x04` | `0x4019e4a8` | `RTOS_Evt4_KeypadMatrix` | Keypad matrix button press and release scanner |
 | `0x05` | `0x4019e9f8` | `RTOS_Evt5_Default` | Unhandled event default exit handler |
@@ -90,7 +90,7 @@ The Real-Time Operating System uses an event-driven cooperative multitasking mod
 | `0x08` | `0x4019e49c` | `RTOS_Evt8_StrobeCapacitor` | Flash strobe capacitor charge level monitoring |
 | `0x09` | `0x4019e4f4` | `RTOS_Evt9_StorageMedia` | xD-Picture Card insertion / removal event |
 | `0x0A` | `0x4019e5a4` | `RTOS_EvtA_BatteryVoltage` | Battery ADC voltage monitor and threshold alert |
-| `0x0B` | `0x4019e4c0` | `RTOS_EvtB_Autofocus` | Autofocus motor lock and focus completion notification |
+| `0x0B` | `0x4019e4c0` | `RTOS_EvtB_Autofocus` | Autofocus motor lock and focus completion notification (interfaces Sanyo LV8086 motor driver) |
 | `0x0C` | `0x4019e4dc` | `RTOS_EvtC_ShutterRelease` | Mechanical shutter release and aperture actuation |
 | `0x0D` | `0x4019e4e8` | `RTOS_EvtD_VideoSync` | Video recording frame sync and drop monitor |
 | `0x0E` | `0x4019e9f8` | `RTOS_EvtE_LcdDimming` | LCD Backlight Dimming event (150s idle timeout, event `0xca0e`) |
@@ -160,3 +160,17 @@ Implemented in `sub_40316C88` (`0x40316c88`). Reads 16-bit opcode at offset `+0x
 - **Path Search**: Header validation routine at `0x402918d4` searches root directory for subfolder `/FIRMWARE` (FAT `"FIRMWARE   "`) and binary `/FIRMWARE/FIRMWARE.BIN` (FAT `"FIRMWAREBIN"`).
 - **Header Scramble Check**: Verifies first 4 bytes for obfuscation signature `0xBA 0xB8 0xB3 0xB1` and descrambles image via `PERM16` XOR `0xFF`.
 - **ROM Flasher**: Subroutine `0x40291694` prompts user on LCD (`YES / NO`) and flashes SDRAM image to NAND ROM.
+
+---
+
+<a id="silicon-hardware-integration"></a>
+## Hardware Teardown Silicon Integration
+
+The firmware subsystems correlate directly with the physical integrated circuits on the logic board:
+
+- **Sanyo EV1MSS11 SoC**: Central TruePic III ARM946E-S processor executing Section 1 firmware at `0x40000000` and managing system buses.
+- **Samsung K5R MCP**: High-density FBGA stacking 32MB Mobile SDRAM (32 MB address space at `0x40000000`) and 47MB OneNAND flash storage managed via the [NAND Flash Translation Layer](#nand-flash-layer) (`BML_`/`STL_`).
+- **ROHM BD9739KN PMIC**: 7-channel switching regulator supplying discrete core, IO, and motor rails, interfaced to the [Standby Sleep Lock](#video-destination-logic) mechanism.
+- **Sanyo LV8086 Motor Driver**: Dual stepper/DC motor driver IC handling zoom lens traversal and autofocus positioning, triggered by [RTOS Events](#rtos-event-dispatcher) `0x02` and `0x0B`.
+- **Kopin KCD CyberDisplay**: Micro-display timing controller driving the electronic viewfinder, selected when [Video Destination Query](#video-destination-logic) returns code 1.
+- **2316GO (24C16) EEPROM**: 16 Kbit serial EEPROM (I2C address 0x50) holding factory optical calibration tables and camera serial number queried via [PTP Opcode](#ptp-over-scsi) `0x1001`.

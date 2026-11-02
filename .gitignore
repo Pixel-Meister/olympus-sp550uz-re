@@ -3,8 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Teamwork Multi-Agent Internal Workspace Logs
+# Teamwork Multi-Agent Internal Workspace Logs & Inter-Agent Q&A
 .agents/
+FIRMWARE_QUERIES.md
 
 # Large OEM Installers (>100MB exceeds GitHub push limits)
 Resources/Firmware Updater/*.exe

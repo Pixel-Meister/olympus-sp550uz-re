@@ -3,7 +3,7 @@
 **Target Model:** Olympus SP-550UZ (Internal OEM Platform: Sanyo `SG155`, Build `v155-77`, DVR `77`)  
 **Hardware Code:** `SANE321000000000` (`07b4:0109`)  
 **Firmware Image Base:** `0x40000000` (ARM Little-Endian, ARMv5TEJ)  
-**Document Purpose:** Comprehensive technical reference of the internal operating system, hardware register mapping, image pipeline, and subsystem entry points for future camera firmware modification projects.
+**Document Purpose:** Comprehensive technical reference of the internal operating system, hardware register mapping, image pipeline, and subsystem entry points.
 
 ---
 
@@ -90,7 +90,7 @@ Every module in the firmware accesses the central system state structure at RAM 
 | `+0x7f` | `uint8` | UI State Flag | `0` = Idle, `1` = Active menu |
 | `+0x8a` | `uint8` | Flash Subsystem State | Internal strobe capacitor charge status |
 | `+0x91` | `uint8` | Shooting Mode Category | `1` = Auto, `2` = Program, `5` = Scene, `8` = Movie, `0x0b` = Guide |
-| `+0x9c` | `int8` | **OSD Display Mode** | `0` = Normal HUD, `1` = Grid/Histogram, `2` = Minimal (Patched to Clean), `5` = Custom |
+| `+0x9c` | `int8` | **OSD Display Mode** | `0` = Normal HUD, `1` = Grid/Histogram, `2` = Minimal HUD View, `5` = Custom |
 | `+0x9e` | `uint8` | Active Scene Selection | Numerical scene ID (Portrait, Landscape, Night, Sport) |
 | `+0xa5` | `uint8` | OSD Display Mute Flag | `0` = Show overlays, `1` = Force hide overlays |
 

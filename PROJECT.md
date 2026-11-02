@@ -1,14 +1,24 @@
 # Project: Olympus SP-550UZ Reverse Engineering & Decompilation Framework
 
 ## Architecture
-The framework provides an end-to-end reverse engineering, decompilation annotation, and documentation toolchain for the Olympus SP-550UZ camera (Sanyo SG155 platform, TruePic III processor).
+The framework provides an end-to-end reverse engineering, decompilation annotation, and documentation toolchain for the Olympus SP-550UZ digital camera (`07b4:0109`), integrating firmware binary analysis with physical hardware teardown discoveries.
 
-### Core Components
+### Physical Hardware Architecture & Silicon BOM
+Physical inspection and teardown of the SP-550UZ PCB identified the following core silicon components:
+- **Main Processor / SoC**: Sanyo EV1MSS11 (Olympus TruePic III / Sanyo Coach platform, ARM946E-S @ 150 MHz core, 48 MHz peripheral bus, BGA package; loads Section 1 code at `0x40000000`).
+- **Flash & Memory (MCP)**: Samsung K5R Multi-Chip Package (FBGA) combining OneNAND Flash (47MB storage managed via Samsung BML/STL translation layer) and 32MB Mobile SDRAM (`0x40000000`–`0x41FFFFFF`).
+- **Power Management IC (PMIC)**: ROHM BD9739KN (7-channel switching regulator on Side A supplying core VDD, SDRAM IO, CCD AFE, motor drive, and standby sleep rail).
+- **Dual Motor Driver**: Sanyo LV8086 (SSOP on Side B, dedicated dual stepper/DC motor driver driving the 18x optical zoom and autofocus mechanisms; interfaced via RTOS events `0x02` and `0x0B`).
+- **EVF Micro-Display Controller**: Kopin KCD CyberDisplay micro-display controller (TQFP on Side B; activated when video destination query `0x4012fef4` returns code `1`).
+- **Calibration EEPROM**: 2316GO / 24C16 (8-pin SOP on Side B; 16 Kbit I2C serial EEPROM storing factory lens calibration, defect maps, and camera serial number).
+- Comprehensive hardware teardown documentation: [`docs/hardware/teardown.md`](docs/hardware/teardown.md).
+
+### Core Framework Components
 1. **Models (`olympus_re/models/`)**:
-   - `memory_map.py`: Definitions of all 9 TruePic III memory domains (`0x40000000` to `0xE081FFFF`), permissions, bus domains, and address validation routines.
+   - `memory_map.py`: Definitions of all TruePic III memory domains (`0x40000000` to `0xE081FFFF`), permissions, bus domains, and address validation routines.
    - `symbols.py`: Data structures for Symbols, Functions, Jump Tables, Literal Pools, and MMIO Registers.
 2. **Analysis Pipeline (`olympus_re/analysis/`)**:
-   - `disassembler.py`: Capstone 5.0.9 ARM LE disassembler streaming engine with `skipdata=True`.
+   - `disassembler.py`: Capstone ARM LE streaming disassembler engine with `skipdata=True`.
    - `function_detector.py`: Multi-method function boundary detection (prologue patterns `push {..., lr}` / `push {r8, sb}`, direct `BL` call targets, literal pool function pointers).
    - `jump_table_analyzer.py`: Switch/jump table resolution engine (bounds checks `#imm`, stride, base load, indirect branch).
    - `literal_pool.py`: PC-relative `LDR` extraction and physical memory domain classification.
@@ -17,10 +27,11 @@ The framework provides an end-to-end reverse engineering, decompilation annotati
 3. **Decompiler Tooling (`olympus_re/decompiler/`)**:
    - `ghidra_sp550uz_annotator.py`: Standalone Ghidra Python / PyGhidra script mapping memory blocks, creating labels, plate comments, and MMIO register tags via `FlatProgramAPI`.
    - `ida_sp550uz_annotator.py`: Standalone IDA Pro IDAPython script using `idc`/`idaapi` to create segments, name functions, and comment hardware registers.
-   - `mock_environment.py`: Static analysis & unit testing harness mocking Ghidra and IDA APIs for offline execution.
+   - `mock_environment.py`: Static analysis & unit testing harness mocking Ghidra and IDA APIs for offline execution without proprietary decompilers.
 4. **Documentation Generator (`olympus_re/docgen/`)**:
    - `generator.py`: Jinja2 generator producing interactive searchable single-page HTML (`docs/xref.html`) and structured Markdown (`docs/xref/`).
-   - `link_validator.py`: Automated link & anchor scraper ensuring 0 dead links.
+   - `link_validator.py`: Automated link & anchor scraper ensuring 0 dead links and 100% memory domain conformance.
+   - `templates/`: Jinja2 documentation templates for interactive HTML and modular Markdown chapters.
 5. **CLI Runner (`olympus_re/cli.py`)**:
    - Unified command-line interface for analysis, symbol export, decompiler script packaging, and documentation generation.
 
@@ -101,6 +112,7 @@ Every feature identified during the Phase 0 survey is mapped to an implementatio
 | M2 | Decompiler Annotation & Import Tooling (R2, V2) | `olympus_re/decompiler/`, Ghidra & IDA scripts, AST/mock harness | M1 | DONE |
 | M3 | Searchable Cross-Reference Documentation (R3, V3) | `olympus_re/docgen/`, HTML & Markdown generators, link validator | M1 | DONE |
 | M4 | Final Milestone: 100% E2E Pass & Adversarial Hardening | Pass 100% E2E test suite (Tiers 1-4) + Tier 5 coverage hardening | E2E, M1, M2, M3 | DONE |
+| M5 | Documentation Overhaul, Teardown Integration & Repository Cleanup | Public showcase documentation overhaul, physical hardware teardown guide, silicon BOM integration, legacy mod purge | M4 | DONE |
 
 ---
 
@@ -148,32 +160,40 @@ Every feature identified during the Phase 0 survey is mapped to an implementatio
 │   │   └── pipeline.py             # Pipeline orchestrator (exports JSON/CSV)
 │   ├── decompiler/                 # Decompiler scripts and annotation tooling (M2)
 │   │   ├── __init__.py
-│   │   ├── ghidra_annotator.py     # Ghidra Python / PyGhidra import script
-│   │   ├── ida_annotator.py        # IDA Pro IDAPython import script
+│   │   ├── ghidra_sp550uz_annotator.py # Ghidra Python / PyGhidra import script
+│   │   ├── ida_sp550uz_annotator.py    # IDA Pro IDAPython import script
 │   │   └── mock_environment.py     # Mock flatapi/idaapi harness for offline tests
 │   ├── docgen/                     # Searchable documentation generator (M3)
 │   │   ├── __init__.py
 │   │   ├── generator.py            # Jinja2 template renderer for HTML & Markdown
 │   │   ├── link_validator.py       # Scraper validating 100% internal links
-│   │   └── templates/
-│   │       ├── xref.html.j2        # Searchable interactive HTML template
-│   │       └── xref.md.j2          # Linked Markdown templates
+│   │   └── templates/              # Jinja2 templates for HTML & Markdown chapters
+│   │       ├── index.md.j2
+│   │       ├── jump_tables.md.j2
+│   │       ├── memory_map.md.j2
+│   │       ├── subsystems.md.j2
+│   │       └── xref.html.j2
 │   └── models/                     # Shared data structures and schemas (M1)
 │       ├── __init__.py
 │       ├── memory_map.py           # TruePic III domains (0x40000000 to 0xE081FFFF)
 │       └── symbols.py              # Symbol, Function, JumpTable, MMIO dataclasses
 ├── tests/                          # E2E Test Suite (Dual Track)
 │   ├── __init__.py
+│   ├── support.py                  # Test constants, memory ranges, and mocks
 │   ├── test_tier1_features.py      # Tier 1: Feature coverage (>=5 per feature)
 │   ├── test_tier2_boundaries.py    # Tier 2: Boundary & corner cases
 │   ├── test_tier3_pairwise.py      # Tier 3: Cross-feature combinations
 │   ├── test_tier4_scenarios.py     # Tier 4: Real-world application scenarios
+│   ├── test_adversarial_m3_challenger.py       # Adversarial link and parity tests
+│   ├── test_adversarial_m3_iter2_challenger.py # XSS & integrity tests
 │   ├── validate_v1_analysis.py     # V1 acceptance criteria validator
 │   ├── validate_v2_decompiler.py   # V2 acceptance criteria validator
 │   └── validate_v3_docs.py         # V3 acceptance criteria validator
-├── docs/                           # Generated cross-reference documentation (M3)
-│   ├── xref.html                   # Interactive searchable HTML
-│   └── xref/                       # Linked markdown chapters
+├── docs/                           # Cross-reference & hardware documentation
+│   ├── hardware/                   # Physical hardware teardown & silicon BOM
+│   │   └── teardown.md             # Comprehensive teardown reference
+│   ├── xref.html                   # Interactive searchable HTML single-page app
+│   └── xref/                       # Linked markdown chapters (index, memory_map, etc.)
 ├── output/                         # Generated symbol database artifacts (M1)
 │   ├── symbols.json
 │   ├── symbols.csv

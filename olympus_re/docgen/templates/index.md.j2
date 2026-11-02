@@ -10,6 +10,12 @@ Welcome to the comprehensive technical and decompilation reference manual for th
 |:---|:---|
 | **Target Device** | Olympus SP-550UZ (18x Optical Zoom, 7.1 Megapixel) |
 | **System Board / ASIC** | Sanyo SG155 Platform / Olympus TruePic III SoC |
+| **Main Processor / SoC** | Sanyo EV1MSS11 (ARM946E-S @ 150 MHz core, 48 MHz bus, BGA package) |
+| **Flash & Memory (MCP)** | Samsung K5R Multi-Chip Package (OneNAND Flash + 32MB Mobile SDRAM, FBGA) |
+| **Power Management (PMIC)** | ROHM BD9739KN (7-channel switching regulator on Side A) |
+| **Motor Driver** | Sanyo LV8086 (Dedicated dual stepper/DC motor driver for 18x zoom & AF, Side B) |
+| **EVF Micro-Display Controller** | Kopin KCD CyberDisplay micro-display controller (Side B) |
+| **Calibration EEPROM** | 2316GO (24C16 8-pin serial EEPROM, I2C address 0x50, Side B) |
 | **Processor Architecture** | ARMv5TEJ (Little-Endian, 32-bit ARM mode) |
 | **Firmware Build** | v155-77 (Version 1.1) |
 | **Firmware Layout** | Section 1 Program Code (4.15 MB) + Section 2 Resources/Data (4.59 MB) |
@@ -24,6 +30,7 @@ This documentation suite is organized into the following technical chapters:
 1. [TruePic III Hardware Memory Map](memory_map.md)
    - Comprehensive layout of the 8 physical memory domains spanning `0x40000000` to `0xE081FFFF`.
    - Detailed register catalog for all 7 hardware MMIO peripheral blocks.
+   - Physical Silicon Architecture and hardware teardown Bill of Materials ([Physical Silicon](memory_map.md#physical-silicon)).
    - Global System State Blackboard structure at `0x41f80000`.
 
 2. [Subsystems & Hardware Integration](subsystems.md)

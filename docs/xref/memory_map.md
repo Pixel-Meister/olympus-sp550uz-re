@@ -76,3 +76,19 @@ The System State Blackboard resides in dedicated uncached SDRAM at `0x41f80000`:
 - **Inactivity Countdown Timer (`0x41f8ddac`)**: Ticks down toward standby sleep (180s timeout, event `0xca0f`) and LCD backlight dimming (150s timeout, event `0xca0e`).
 - **Playback State Struct (`0x41f8df04`)**: Stores file navigation pointers and video destination during playback mode at offset `+0x5a` (`0x41f8df5e`).
 - **Battery Voltage ADC (`0x41f8ddfc`)**: Stores digitized battery cell voltage for low-battery shutdown thresholds.
+
+---
+
+<a id="physical-silicon"></a>
+## Physical Silicon Architecture & Hardware Teardown
+
+Physical teardown and hardware inspection reveals the multi-chip package and discrete controller ICs that implement this architecture:
+
+| Silicon Component | Device Marking / Part | Package | System Interconnect & Memory Map Role |
+|:---|:---|:---|:---|
+| **Main Processor / SoC** | Sanyo EV1MSS11 | BGA | Olympus TruePic III / Sanyo Coach platform; ARM946E-S @ 150 MHz core, 48 MHz bus; executes Section 1 code loaded at `0x40000000` |
+| **Flash & Memory (MCP)** | Samsung K5R Multi-Chip Package | FBGA | Stacks OneNAND Flash (47MB storage via BML/STL) + 32MB Mobile SDRAM (32 MB address space at `0x40000000`) |
+| **Power Management (PMIC)** | ROHM BD9739KN | QFN / Side A | 7-channel switching regulator supplying core VDD, SDRAM IO, CCD AFE, and standby sleep rails |
+| **Motor Driver** | Sanyo LV8086 | SSOP / Side B | Dedicated dual stepper/DC motor driver for 18x optical zoom barrel traversal and autofocus lens positioning |
+| **EVF Micro-Display Controller** | Kopin KCD CyberDisplay | TQFP / Side B | Drives the electronic viewfinder micro-display; selected via video destination query `0x4012fef4` code 1 |
+| **Calibration EEPROM** | 2316GO (24C16) | 8-pin SOP / Side B | 16 Kbit (2 KB) I2C serial EEPROM (address 0x50) storing factory lens calibration, defect maps, and camera serial number |
